@@ -36,6 +36,29 @@ For a deployment, build the one-jar server and run it with the script:
 
 Ctrl+C (or SIGTERM) closes the port and shuts the event loops down.
 
+### Docker
+
+The image builds the server with the JDK and runs it on the JRE alone, as a non-root user. Only
+Docker is needed: no Java or Gradle on the host.
+
+```sh
+docker compose up -d                     # build and start it on port 7770 (TCP and UDP)
+docker compose logs -f                   # follow the log
+docker compose down                      # stop it
+```
+
+Or without Compose:
+
+```sh
+docker build -t openrac-server .
+docker run -d --name openrac-server -p 7770:7770/tcp -p 7770:7770/udp openrac-server
+```
+
+Both TCP and UDP must be published: game state uses UDP where it gets through. A `.env` beside
+`compose.yaml` overrides `.env.defaults` (as do `-e KEY=value` and trailing `--key value`
+arguments with `docker run`). To listen on another port, change the published one
+(`-p 9000:7770/tcp -p 9000:7770/udp`) rather than `PORT`, which is the port inside the container.
+
 ## Configuration
 
 Settings live in `.env.defaults` at the repository root: the host and port, logging, the party

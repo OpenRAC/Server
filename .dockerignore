@@ -1,0 +1,13 @@
+# Only the sources and build scripts go into the image's build.
+.git
+.gradle
+.kotlin
+.idea
+.vscode
+**/build
+# IntelliJ's output folders only: packets/out is source.
+out
+services/*/out
+.env
+*.iml
+.DS_Store
