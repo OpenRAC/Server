@@ -210,9 +210,17 @@ public class Log {
      */
 
     private static DebugLevel getDebugLevel() {
-        String environmentLevel = env("DEBUG_LEVEL", "all");
+        return toLevel(env("DEBUG_LEVEL", "all"));
+    }
 
-        return switch (environmentLevel.toLowerCase()) {
+    /**
+     * Converts a level's name, as DEBUG_LEVEL spells it, to an enum.
+     * @param name The level's name.
+     * @return The debug level as an object of the DebugLevel enum.
+     */
+
+    public static DebugLevel toLevel(String name) {
+        return switch (name.toLowerCase()) {
             case "none" -> DebugLevel.NONE;
             case "error" -> DebugLevel.ERROR;
             case "warning", "warn" -> DebugLevel.WARNING;

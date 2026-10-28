@@ -24,4 +24,7 @@ dependencies {
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
+
+    // Tests run from the repository root, where the .env files are.
+    workingDir = rootProject.projectDir
 }

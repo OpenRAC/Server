@@ -11,5 +11,8 @@ build/
 /out/
 /services/*/out/
 
+# Local environment overrides (.env.defaults is committed).
+.env
+
 # macOS
 .DS_Store

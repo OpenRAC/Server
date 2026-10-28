@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Run the built server jar from the repository root. Build it first: ./gradlew :server:buildServerJar
-# Arguments go to the server (the port); DEBUG_LEVEL and DEBUGGING set the logging.
+# Settings come from .env.defaults and a local .env at the root; arguments override them as
+# key value pairs (--port 9000).
 set -euo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 JAR="services/server/build/libs/openrac-server-1.0.0.jar"

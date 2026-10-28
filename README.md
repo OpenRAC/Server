@@ -21,20 +21,25 @@ Coding rules: [docs/CODING_CONVENTIONS.md](docs/CODING_CONVENTIONS.md).
 Java 25 is downloaded by Gradle if it is not installed.
 
 ```sh
-./gradlew build                  # compile and run the tests
-./gradlew :server:run            # listen on port 7770
-./gradlew :server:run --args=9000
-OPENRAC_PORT=9000 ./gradlew :server:run
+./gradlew build                          # compile and run the tests
+./gradlew :server:run                    # listen on 0.0.0.0:7770
+./gradlew :server:run --args="--port 9000"
 ```
 
 For a deployment, build the one-jar server and run it with the script:
 
 ```sh
-./gradlew :server:buildServerJar   # services/server/build/libs/openrac-server-1.0.0.jar
-./scripts/run_server.sh            # or ./scripts/run_server.sh 9000
+./gradlew :server:buildServerJar         # services/server/build/libs/openrac-server-1.0.0.jar
+./scripts/run_server.sh                  # or ./scripts/run_server.sh --port 9000
 ```
 
 Ctrl+C (or SIGTERM) closes the port and shuts the event loops down.
+
+## Configuration
+
+Settings live in `.env.defaults` at the repository root: the host and port, logging, the party
+size and the limits below. Put local changes in a `.env` beside it (ignored by git); it overrides
+the defaults, and command-line pairs (`--port 9000`, `--max-party-size 2`) override both.
 
 Logging is coloured and levelled. `DEBUG_LEVEL` picks what shows (`all`, the default, `verbose`,
 `warning`, `error` or `none`); `DEBUGGING=true` adds the debug lines (party chat), and with
@@ -43,7 +48,7 @@ Logging is coloured and levelled. `DEBUG_LEVEL` picks what shows (`all`, the def
 ## Limits
 
 Each connection has a rate per packet kind: a short burst, then a steady rate (chat 1 a second,
-party requests 1 a second, game data 60 a second, clock requests 2 a second; see `Constants`).
+party requests 1 a second, game data 60 a second, clock requests 2 a second; see `.env.defaults`).
 A packet over its rate is dropped and counts as a strike; strikes are forgiven over time, and a
 connection that keeps flooding is closed. One address may hold 8 connections, and a connection
 that has not said hello within 10 seconds is closed.

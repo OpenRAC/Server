@@ -10,6 +10,7 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.util.concurrent.Future;
 
 import com.openrac.server.net.ServerChannelInitializer;
+import com.openrac.system.Environment;
 import com.openrac.utils.logger.Log;
 
 /**
@@ -25,26 +26,33 @@ public class Server {
     private Channel channel;
 
     /**
-     * Starts the server on the port from the first argument, the environment, or the default.
-     * @param args The command line arguments.
+     * Loads the environment, then starts the server on its host and port.
+     * @param args The command line arguments, as key value pairs (--port 9000).
      * @throws InterruptedException If binding the port is interrupted.
      */
 
     public static void main(String[] args) throws InterruptedException {
+        // Constants read the environment, so it loads before anything else.
+        Environment.load(args);
+
+        Log.setLevel(Log.toLevel(Environment.getString("DEBUG_LEVEL", "all")));
+        Log.setDebugging(Environment.getBoolean("DEBUGGING", false));
+
         Server server = new Server();
 
-        server.start(getPort(args));
+        server.start(Constants.HOST, Constants.PORT);
 
         Runtime.getRuntime().addShutdownHook(new Thread(server::stop, "shutdown"));
     }
 
     /**
-     * Binds the port and starts accepting connections.
+     * Binds the address and starts accepting connections.
+     * @param host The address to listen on.
      * @param port The TCP port to listen on.
      * @throws InterruptedException If binding the port is interrupted.
      */
 
-    public void start(int port) throws InterruptedException {
+    public void start(String host, int port) throws InterruptedException {
         Log.info("Initializing " + Constants.NAME + " " + Constants.VERSION + " (Java " + Runtime.version().feature() + ", log level " + Log.getLevel() + ")...");
 
         // Game traffic is small and frequent, so never wait to batch it.
@@ -53,11 +61,11 @@ public class Server {
                 .channel(NioServerSocketChannel.class)
                 .childOption(ChannelOption.TCP_NODELAY, true)
                 .childHandler(new ServerChannelInitializer())
-                .bind(port)
+                .bind(host, port)
                 .sync()
                 .channel();
 
-        Log.notice(Constants.NAME + " is listening on port " + port + ".");
+        Log.notice(Constants.NAME + " is listening on " + host + ":" + port + ".");
     }
 
     /**
@@ -78,20 +86,5 @@ public class Server {
         workers.syncUninterruptibly();
 
         Log.notice(Constants.NAME + " stopped.");
-    }
-
-    /**
-     * @param args The command line arguments.
-     * @return The port to listen on.
-     */
-
-    private static int getPort(String[] args) {
-        // An argument wins over the environment.
-        if (args.length > 0) return Integer.parseInt(args[0]);
-
-        String port = System.getenv(Constants.PORT_ENV);
-
-        // An unset variable falls back to the default port.
-        return port == null || port.isBlank() ? Constants.DEFAULT_PORT : Integer.parseInt(port.strip());
     }
 }

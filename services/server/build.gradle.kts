@@ -13,6 +13,11 @@ dependencies {
 }
 
 tasks {
+    // Run from the repository root, where the .env files are.
+    named<JavaExec>("run") {
+        workingDir = rootProject.projectDir
+    }
+
     // One jar with every dependency inside, run by scripts/run_server.sh.
     register<Jar>("buildServerJar") {
         group = "build"
