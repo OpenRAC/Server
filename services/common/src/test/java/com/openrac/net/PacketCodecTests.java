@@ -107,7 +107,7 @@ public class PacketCodecTests {
         @Test
         @DisplayName("Opcodes without a payload carry only the opcode")
         public void testBareOpcodes() {
-            for (Opcodes.Party opcode : new Opcodes.Party[] { Opcodes.Party.CREATE, Opcodes.Party.LEAVE, Opcodes.Party.END, Opcodes.Party.FIND }) {
+            for (Opcodes.Party opcode : new Opcodes.Party[] { Opcodes.Party.CREATE, Opcodes.Party.LEAVE, Opcodes.Party.END, Opcodes.Party.FIND, Opcodes.Party.LIST }) {
                 InputBuffer payload = roundTrip(new PartyPacket(opcode), Packets.PARTY);
 
                 Assertions.assertEquals(opcode, Opcodes.Party.get(payload.readUnsignedByte()));
@@ -122,6 +122,27 @@ public class PacketCodecTests {
 
             Assertions.assertEquals(Opcodes.Party.JOIN, Opcodes.Party.get(payload.readUnsignedByte()));
             Assertions.assertEquals("ABC234", payload.readString());
+            Assertions.assertEquals(0, payload.size());
+        }
+
+        @Test
+        @DisplayName("Create carries the description")
+        public void testCreateDescription() {
+            InputBuffer payload = roundTrip(new PartyPacket(Opcodes.Party.CREATE, "Chill run"), Packets.PARTY);
+
+            Assertions.assertEquals(Opcodes.Party.CREATE, Opcodes.Party.get(payload.readUnsignedByte()));
+            Assertions.assertEquals("Chill run", payload.readString());
+            Assertions.assertEquals(0, payload.size());
+        }
+
+        @Test
+        @DisplayName("An empty description is written as the empty string marker")
+        public void testEmptyDescription() {
+            InputBuffer payload = roundTrip(new PartyPacket(Opcodes.Party.CREATE, ""), Packets.PARTY);
+
+            payload.readUnsignedByte();
+            Assertions.assertEquals(-1, payload.buffer().getShort(payload.buffer().position()));
+            Assertions.assertEquals("", payload.readString());
             Assertions.assertEquals(0, payload.size());
         }
 
