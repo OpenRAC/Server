@@ -218,13 +218,13 @@ public class PartyFlowTests {
         }
 
         @Test
-        @DisplayName("Match finding fills open parties and never private ones")
+        @DisplayName("Match finding fills a waiting party, created or found, up to its limit")
         public void testFind() {
             Client host = connect("Ratchet");
 
             host.create();
 
-            // With only a private party open, the finder hosts a new open one.
+            // A created party waits for finders as well as for its code.
             Client finder = connect("Clank");
 
             finder.send(new PartyPacket(Opcodes.Party.FIND));
@@ -232,12 +232,12 @@ public class PartyFlowTests {
             InputBuffer info = finder.receiveParty(Opcodes.Party.INFO);
 
             info.readString();
-            Assertions.assertEquals(finder.id, info.readInt());
-            Assertions.assertEquals(1, info.readUnsignedByte());
-            host.assertSilent();
+            Assertions.assertEquals(host.id, info.readInt());
+            Assertions.assertEquals(2, info.readUnsignedByte());
+            Assertions.assertEquals(finder.id, host.receiveParty(Opcodes.Party.JOINED).readInt());
 
             // Later finders fill that party up to its limit.
-            for (int i = 2; i <= Constants.MAX_PARTY_SIZE; i++) {
+            for (int i = 3; i <= Constants.MAX_PARTY_SIZE; i++) {
                 Client member = connect("Member" + i);
 
                 member.send(new PartyPacket(Opcodes.Party.FIND));
@@ -245,11 +245,11 @@ public class PartyFlowTests {
                 InputBuffer joined = member.receiveParty(Opcodes.Party.INFO);
 
                 joined.readString();
-                Assertions.assertEquals(finder.id, joined.readInt());
+                Assertions.assertEquals(host.id, joined.readInt());
                 Assertions.assertEquals(i, joined.readUnsignedByte());
             }
 
-            // A full open party sends the next finder to a party of its own.
+            // A full party sends the next finder to a party of its own.
             Client late = connect("Qwark");
 
             late.send(new PartyPacket(Opcodes.Party.FIND));

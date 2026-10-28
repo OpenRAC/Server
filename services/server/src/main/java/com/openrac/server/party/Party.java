@@ -19,7 +19,6 @@ import java.util.function.Consumer;
 public class Party {
     private final String code;
     private final Session host;
-    private final boolean open; // Whether match finding may place strangers in the party.
 
     private final List<Session> members = new CopyOnWriteArrayList<>();
 
@@ -27,13 +26,11 @@ public class Party {
      * Creates a party with its host as the first member.
      * @param code The join code.
      * @param host The session that created the party.
-     * @param open Whether match finding may place players in it, rather than only its code.
      */
 
-    public Party(String code, Session host, boolean open) {
+    public Party(String code, Session host) {
         this.code = code;
         this.host = host;
-        this.open = open;
 
         members.add(host);
     }
@@ -132,13 +129,6 @@ public class Party {
         return members.size() >= Constants.MAX_PARTY_SIZE;
     }
 
-    /**
-     * @return Whether match finding may place players in the party.
-     */
-
-    public boolean isOpen() {
-        return open;
-    }
 
     /**
      * Writes the party as a new member sees it.

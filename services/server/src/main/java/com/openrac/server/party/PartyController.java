@@ -18,7 +18,7 @@ import java.util.Map;
  */
 
 public class PartyController {
-    // Kept in creation order, so match finding fills the oldest open party first.
+    // Kept in creation order, so match finding fills the oldest party first.
     private static final Map<String, Party> parties = new LinkedHashMap<>();
 
     // The join code is all that keeps strangers out.
@@ -36,8 +36,7 @@ public class PartyController {
             return;
         }
 
-        // A created party is private: only its code brings players in.
-        host(session, false);
+        host(session);
     }
 
     /**
@@ -72,8 +71,8 @@ public class PartyController {
     }
 
     /**
-     * Places the session in the oldest open party with room, or makes it the host of a new open
-     * party when there is none.
+     * Places the session in the oldest party with room, or makes it the host of a new party when
+     * there is none.
      * @param session The session looking for a match.
      */
 
@@ -85,30 +84,28 @@ public class PartyController {
         }
 
         for (Party party : parties.values()) {
-            // Private parties and full ones are not for strangers.
-            if (!party.isOpen() || party.isFull()) continue;
+            if (party.isFull()) continue;
 
             add(session, party);
             return;
         }
 
-        // No open party has room, so the finder hosts the next one.
-        host(session, true);
+        // No party has room, so the finder hosts the next one.
+        host(session);
     }
 
     /**
      * Makes the session the host of a new party and sends it the party's details.
      * @param session The session hosting.
-     * @param open Whether match finding may place players in the party.
      */
 
-    private static void host(Session session, boolean open) {
-        Party party = new Party(generateCode(), session, open);
+    private static void host(Session session) {
+        Party party = new Party(generateCode(), session);
 
         parties.put(party.getCode(), party);
         session.setParty(party);
 
-        Log.info(describe(session) + " is hosting " + (open ? "open" : "private") + " party " + party.getCode() + ".");
+        Log.info(describe(session) + " is hosting party " + party.getCode() + ".");
 
         session.send(new PartyPacket(Opcodes.Party.INFO, party.serialize()));
     }

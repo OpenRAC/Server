@@ -84,14 +84,14 @@ Names and versions are 1 to 32 characters, chat messages 1 to 256. Parties hold 
 
 | Opcode | Name | Direction | Payload |
 |---|---|---|---|
-| 0 | `CREATE` | client → server | none; answered with `INFO`, the creator hosts a private party (joined by code only) |
+| 0 | `CREATE` | client → server | none; answered with `INFO`, the creator hosts a party (match finding can fill it, its code invites) |
 | 1 | `JOIN` | client → server | join code string (6 characters, any case) |
 | 2 | `LEAVE` | client → server | none |
 | 3 | `INFO` | server → client | code string, host id int, member count byte, then id int + name string per member |
 | 4 | `JOINED` | server → members | id int, name string |
 | 5 | `LEFT` | server → members | id int |
 | 6 | `END` | server → members | none; the host left, so the party is gone |
-| 7 | `FIND` | client → server | none; joins the oldest open party with room, else hosts a new open party; answered with `INFO` |
+| 7 | `FIND` | client → server | none; joins the oldest party with room, else hosts a new one; answered with `INFO` |
 
 `ERROR` reasons: 0 `PARTY_NOT_FOUND`, 1 `PARTY_FULL`, 2 `ALREADY_IN_PARTY`, 3 `NOT_IN_PARTY`.
 

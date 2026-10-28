@@ -17,7 +17,7 @@ public final class Opcodes {
         JOINED, // Server tells members someone joined.
         LEFT, // Server tells members someone left.
         END, // Server tells members the host left.
-        FIND; // Client joins any open public party, or hosts a new one.
+        FIND; // Client joins any party with room, or hosts a new one.
 
         /**
          * Resolves a party opcode from its byte.
