@@ -1,0 +1,15 @@
+# Gradle
+.gradle/
+build/
+.kotlin/
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+# IntelliJ's output folders, at the root and each module's root only.
+/out/
+/services/*/out/
+
+# macOS
+.DS_Store
