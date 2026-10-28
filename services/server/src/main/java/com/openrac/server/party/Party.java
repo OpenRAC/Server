@@ -8,6 +8,7 @@ import com.openrac.server.Session;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 
 /**
  * A group of players linked under one host. The host's game is authoritative, so members' game
@@ -54,9 +55,20 @@ public class Party {
      */
 
     public void forward(Session sender, int target, OutgoingPacket packet) {
+        forward(sender, target, member -> member.send(packet));
+    }
+
+    /**
+     * Hands game data to each recipient along the party's links.
+     * @param sender The member that sent the data.
+     * @param target From the host, a member's session id or the broadcast target.
+     * @param delivery Sends the data to one recipient.
+     */
+
+    public void forward(Session sender, int target, Consumer<Session> delivery) {
         // A member's data only ever goes to the authoritative host.
         if (sender != host) {
-            host.send(packet);
+            delivery.accept(host);
             return;
         }
 
@@ -65,7 +77,7 @@ public class Party {
             if (member == host) continue;
 
             // Broadcast reaches everyone, otherwise only the named member.
-            if (target == NetworkConstants.BROADCAST || member.getId() == target) member.send(packet);
+            if (target == NetworkConstants.BROADCAST || member.getId() == target) delivery.accept(member);
         }
     }
 

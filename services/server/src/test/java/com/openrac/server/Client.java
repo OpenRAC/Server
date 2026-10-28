@@ -23,6 +23,7 @@ class Client {
     final EmbeddedChannel channel = new EmbeddedChannel();
 
     int id;
+    long token; // The UDP token the server sent after hello.
 
     /**
      * Builds the server's pipeline on the embedded channel.
@@ -33,13 +34,18 @@ class Client {
     }
 
     /**
-     * Says hello, then reads the session id.
+     * Says hello, then reads the session id and the UDP offer.
      * @param name The display name.
      */
 
     void hello(String name) {
         send(new HelloPacket("0.1.0", name));
         id = receive(Packets.HELLO).readInt();
+
+        InputBuffer udp = receive(Packets.UDP);
+
+        token = udp.readLong();
+        Assertions.assertEquals(Constants.PORT, udp.readInt());
     }
 
     /**

@@ -11,9 +11,11 @@ import com.openrac.net.packets.out.DataPacket;
 import com.openrac.net.packets.out.ErrorPacket;
 import com.openrac.net.packets.out.HelloPacket;
 import com.openrac.net.packets.out.TimePacket;
+import com.openrac.net.packets.out.UdpPacket;
 import com.openrac.server.Clock;
 import com.openrac.server.Constants;
 import com.openrac.server.Session;
+import com.openrac.server.SessionRegistry;
 import com.openrac.server.limits.ConnectionLimit;
 import com.openrac.server.limits.RateLimit;
 import com.openrac.server.party.Party;
@@ -78,6 +80,9 @@ public class ServerPacketHandler extends PacketHandler {
     public void channelInactive(ChannelHandlerContext ctx) {
         // A refused connection never counted against its address.
         if (address != null) ConnectionLimit.close(address);
+
+        // Datagrams naming a closed session are dropped from now on.
+        if (session != null) SessionRegistry.remove(session);
 
         // A link that never said hello holds no party.
         if (session != null) PartyController.leave(session);
@@ -189,7 +194,12 @@ public class ServerPacketHandler extends PacketHandler {
 
         Log.info("Session " + session.getId() + " (" + name + ", version " + version + ") from " + ctx.channel().remoteAddress() + ".");
 
+        SessionRegistry.add(session);
+
         session.send(new HelloPacket(session.getId()));
+
+        // Shipped clients read hello as it was, so UDP comes separately.
+        session.send(new UdpPacket(session.getToken(), Constants.PORT));
     }
 
     /**

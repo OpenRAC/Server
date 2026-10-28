@@ -1,21 +1,24 @@
 package com.openrac.server;
 
+import io.netty.bootstrap.Bootstrap;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.MultiThreadIoEventLoopGroup;
 import io.netty.channel.nio.NioIoHandler;
+import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.util.concurrent.Future;
 
 import com.openrac.server.net.ServerChannelInitializer;
+import com.openrac.server.net.ServerDatagramHandler;
 import com.openrac.system.Environment;
 import com.openrac.utils.logger.Log;
 
 /**
- * The entry point. It binds the TCP port, accepts game connections on Netty's event loops and
- * shuts them down cleanly when the process is stopped.
+ * The entry point. It binds the TCP and UDP port, accepts game connections on Netty's event loops
+ * and shuts them down cleanly when the process is stopped.
  */
 
 public class Server {
@@ -24,6 +27,7 @@ public class Server {
     private final EventLoopGroup workerGroup = new MultiThreadIoEventLoopGroup(NioIoHandler.newFactory());
 
     private Channel channel;
+    private Channel udpChannel; // The one datagram socket every session shares.
 
     /**
      * Loads the environment, then starts the server on its host and port.
@@ -48,7 +52,7 @@ public class Server {
     /**
      * Binds the address and starts accepting connections.
      * @param host The address to listen on.
-     * @param port The TCP port to listen on.
+     * @param port The TCP and UDP port to listen on.
      * @throws InterruptedException If binding the port is interrupted.
      */
 
@@ -65,7 +69,16 @@ public class Server {
                 .sync()
                 .channel();
 
-        Log.notice(Constants.NAME + " is listening on " + host + ":" + port + ".");
+        // Game state may also travel over UDP, on the same port.
+        udpChannel = new Bootstrap()
+                .group(workerGroup)
+                .channel(NioDatagramChannel.class)
+                .handler(new ServerDatagramHandler())
+                .bind(host, port)
+                .sync()
+                .channel();
+
+        Log.notice(Constants.NAME + " is listening on " + host + ":" + port + " (TCP and UDP).");
     }
 
     /**
@@ -77,6 +90,7 @@ public class Server {
 
         // A failed bind leaves no channel to close.
         if (channel != null) channel.close().syncUninterruptibly();
+        if (udpChannel != null) udpChannel.close().syncUninterruptibly();
 
         // Both quiet periods run at once before either is awaited.
         Future<?> boss = bossGroup.shutdownGracefully();
