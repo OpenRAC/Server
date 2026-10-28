@@ -115,7 +115,8 @@ A client whose UDP is blocked never binds and keeps sending and receiving state 
   `BIND` every few seconds to keep its NAT mapping open; the server runs no timers for it.
 - **Routing.** `STATE` follows the `DATA` rules: a member's goes to the host, the host's to target 0
   (every other member) or one member. Each recipient gets it by UDP once bound, otherwise as a TCP
-  `DATA` packet from the sender.
+  `DATA` packet from the sender. A session the server has heard no valid datagram from for
+  `UDP_TIMEOUT_SECONDS` (15) gets state over TCP again until its next datagram.
 - **Drops.** A datagram over 1,200 bytes, cut short, of an unknown kind, or naming an unknown session
   or the wrong token is dropped without an answer.
 

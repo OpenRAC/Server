@@ -156,6 +156,37 @@ public class DatagramFlowTests {
         }
 
         @Test
+        @DisplayName("A session whose UDP went quiet gets state over TCP again")
+        public void testQuietUdpFallsBack() {
+            Client host = connect("Ratchet");
+            Client member = connect("Clank");
+
+            member.join(host.create(), 2);
+            host.receive(Packets.PARTY);
+
+            bind(member, address(40_001));
+
+            // Its last datagram arrived longer ago than the timeout allows.
+            long stale = System.nanoTime() - (Constants.UDP_TIMEOUT_SECONDS + 1) * 1_000_000_000L;
+
+            SessionRegistry.get(member.id).heard(stale);
+
+            sendState(host, address(40_000), NetworkConstants.BROADCAST, new byte[] { 9 });
+            assertNoDatagram();
+
+            InputBuffer data = member.receive(Packets.DATA);
+
+            Assertions.assertEquals(host.id, data.readInt());
+            Assertions.assertArrayEquals(new byte[] { 9 }, data.readRemainingBytes());
+
+            // A fresh keepalive puts it back on UDP.
+            bind(member, address(40_001));
+            sendState(host, address(40_000), NetworkConstants.BROADCAST, new byte[] { 10 });
+
+            Assertions.assertArrayEquals(new byte[] { 10 }, receiveState(address(40_001), host.id));
+        }
+
+        @Test
         @DisplayName("A wrong token, an unknown session or a short datagram binds nothing")
         public void testInvalidBinds() {
             Client host = connect("Ratchet");

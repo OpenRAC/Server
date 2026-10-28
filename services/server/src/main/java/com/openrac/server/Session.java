@@ -37,6 +37,7 @@ public class Session {
     private final RateLimit stateLimit = new RateLimit(Constants.DATA_BURST, Constants.DATA_PER_SECOND); // Datagram loop only.
 
     private volatile InetSocketAddress udpAddress; // Null until a valid datagram arrives.
+    private volatile long udpHeard; // System.nanoTime() of the last valid datagram.
 
     /**
      * Creates a session with the next free id.
@@ -69,8 +70,8 @@ public class Session {
     public void sendState(Channel udp, byte[] datagram, DataPacket fallback) {
         InetSocketAddress address = udpAddress;
 
-        // A client with blocked UDP never binds, so stays on TCP.
-        if (address == null) {
+        // Blocked UDP never binds, and a quiet one may have broken.
+        if (address == null || System.nanoTime() - udpHeard > Constants.UDP_TIMEOUT_SECONDS * 1_000_000_000L) {
             send(fallback);
             return;
         }
@@ -138,10 +139,21 @@ public class Session {
     /**
      * Sets where datagrams for this session go.
      * @param udpAddress The address its last valid datagram came from.
+     * @param heard When that datagram arrived, as System.nanoTime().
      */
 
-    public void setUdpAddress(InetSocketAddress udpAddress) {
+    public void setUdpAddress(InetSocketAddress udpAddress, long heard) {
         this.udpAddress = udpAddress;
+        this.udpHeard = heard;
+    }
+
+    /**
+     * Notes a valid datagram from the bound address, keeping UDP in use.
+     * @param heard When it arrived, as System.nanoTime().
+     */
+
+    public void heard(long heard) {
+        this.udpHeard = heard;
     }
 
     /**

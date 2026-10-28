@@ -106,11 +106,15 @@ public class ServerDatagramHandler extends SimpleChannelInboundHandler<DatagramP
 
     private static void bind(Session session, InetSocketAddress sender) {
         InetSocketAddress bound = session.getUdpAddress();
+        long now = System.nanoTime();
 
         // Most datagrams come from where the last one did.
-        if (sender.equals(bound)) return;
+        if (sender.equals(bound)) {
+            session.heard(now);
+            return;
+        }
 
-        session.setUdpAddress(sender);
+        session.setUdpAddress(sender, now);
 
         // NAT may move the port, so a new sender rebinds the session.
         if (bound == null) Log.info("Session " + session.getId() + " (" + session.getName() + ") bound UDP to " + sender + ".");

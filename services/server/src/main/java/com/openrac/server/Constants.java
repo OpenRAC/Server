@@ -35,6 +35,7 @@ public class Constants {
     public static final int STRIKES_FORGIVEN_PER_SECOND = Environment.getInt("STRIKES_FORGIVEN_PER_SECOND", 1);
 
     public static final int MAX_CONNECTIONS_PER_ADDRESS = Environment.getInt("MAX_CONNECTIONS_PER_ADDRESS", 8);
+    public static final int UDP_TIMEOUT_SECONDS = Environment.getInt("UDP_TIMEOUT_SECONDS", 15); // Quiet UDP falls back to TCP.
     public static final int HELLO_TIMEOUT_SECONDS = Environment.getInt("HELLO_TIMEOUT_SECONDS", 10); // Hello within this, or closed.
 
     public static final int CODE_LENGTH = 6;
