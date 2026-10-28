@@ -120,6 +120,9 @@ public class ServerPacketHandler extends PacketHandler {
 
             // Only the server reports errors.
             case ERROR -> reject(ctx, "sent an error packet");
+
+            // Only the server hands out UDP tokens.
+            case UDP -> reject(ctx, "sent a UDP packet");
         }
     }
 
@@ -135,8 +138,8 @@ public class ServerPacketHandler extends PacketHandler {
             case DATA -> dataLimit.take();
             case TIME -> timeLimit.take();
 
-            // The greeting is once only, and errors are rejected outright.
-            case HELLO, ERROR -> true;
+            // The greeting is once only, and server-only packets are rejected outright.
+            case HELLO, ERROR, UDP -> true;
         };
     }
 
