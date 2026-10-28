@@ -1,6 +1,7 @@
 package com.openrac.server.party;
 
 import com.openrac.net.packets.Opcodes;
+import com.openrac.net.packets.model.OutputBuffer;
 import com.openrac.net.packets.out.ErrorPacket;
 import com.openrac.net.packets.out.PartyPacket;
 import com.openrac.server.Constants;
@@ -27,16 +28,17 @@ public class PartyController {
     /**
      * Creates a party hosted by the session and sends it the party's details.
      * @param session The session creating the party.
+     * @param description The sanitised description to list it under.
      */
 
-    public static synchronized void create(Session session) {
+    public static synchronized void create(Session session, String description) {
         // A session belongs to one party at a time.
         if (session.getParty() != null) {
             session.send(new ErrorPacket(Opcodes.Error.ALREADY_IN_PARTY));
             return;
         }
 
-        host(session);
+        host(session, description);
     }
 
     /**
@@ -91,16 +93,48 @@ public class PartyController {
         }
 
         // No party has room, so the finder hosts the next one.
-        host(session);
+        host(session, "");
+    }
+
+    /**
+     * Sends the session the parties it could join: oldest first, with room, not its own.
+     * @param session The session asking.
+     */
+
+    public static synchronized void list(Session session) {
+        OutputBuffer listing = new OutputBuffer();
+        int count = 0;
+
+        for (Party party : parties.values()) {
+            // The list is for finding a party to join, and a full one cannot be joined.
+            if (party.isFull()) continue;
+
+            // A session has no use for the party it is already in.
+            if (party == session.getParty()) continue;
+
+            // The count is one byte, so the list is cut off here.
+            if (count == Constants.MAX_LISTED_PARTIES) break;
+
+            listing.append(party.serializeListing());
+            count++;
+        }
+
+        OutputBuffer payload = new OutputBuffer();
+
+        payload.writeUnsignedByte(count);
+        payload.append(listing);
+
+        session.send(new PartyPacket(Opcodes.Party.LIST, payload));
     }
 
     /**
      * Makes the session the host of a new party and sends it the party's details.
      * @param session The session hosting.
+     * @param description The sanitised description to list it under.
      */
 
-    private static void host(Session session) {
-        Party party = new Party(generateCode(), session);
+    private static void host(Session session, String description) {
+        Party party = new Party(generateCode(), session, description);
 
         parties.put(party.getCode(), party);
         session.setParty(party);

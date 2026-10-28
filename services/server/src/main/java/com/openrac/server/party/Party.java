@@ -19,6 +19,7 @@ import java.util.function.Consumer;
 public class Party {
     private final String code;
     private final Session host;
+    private final String description;
 
     private final List<Session> members = new CopyOnWriteArrayList<>();
 
@@ -26,11 +27,13 @@ public class Party {
      * Creates a party with its host as the first member.
      * @param code The join code.
      * @param host The session that created the party.
+     * @param description The sanitised text shown in party lists, empty for none.
      */
 
-    public Party(String code, Session host) {
+    public Party(String code, Session host, String description) {
         this.code = code;
         this.host = host;
+        this.description = description;
 
         members.add(host);
     }
@@ -105,6 +108,22 @@ public class Party {
     }
 
     /**
+     * @return The host's session.
+     */
+
+    public Session getHost() {
+        return host;
+    }
+
+    /**
+     * @return The text shown in party lists, empty for none.
+     */
+
+    public String getDescription() {
+        return description;
+    }
+
+    /**
      * @return The current members, host included.
      */
 
@@ -129,10 +148,26 @@ public class Party {
         return members.size() >= Constants.MAX_PARTY_SIZE;
     }
 
+    /**
+     * Writes the party as a party list shows it.
+     * @return The code, the host's name, the member count, the size limit and the description.
+     */
+
+    public OutputBuffer serializeListing() {
+        OutputBuffer buffer = new OutputBuffer();
+
+        buffer.writeString(code);
+        buffer.writeString(host.getName());
+        buffer.writeUnsignedByte(members.size());
+        buffer.writeUnsignedByte(Constants.MAX_PARTY_SIZE);
+        buffer.writeString(description);
+
+        return buffer;
+    }
 
     /**
      * Writes the party as a new member sees it.
-     * @return The code, the host's id, then the member count and each member.
+     * @return The code, the host's id, then the member count, each member and the description.
      */
 
     public OutputBuffer serialize() {
@@ -143,6 +178,8 @@ public class Party {
         buffer.writeUnsignedByte(members.size());
 
         for (Session member : members) buffer.append(member.serialize());
+
+        buffer.writeString(description);
 
         return buffer;
     }

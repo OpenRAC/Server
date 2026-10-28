@@ -212,9 +212,15 @@ public class ServerPacketHandler extends PacketHandler {
         Opcodes.Party opcode = Opcodes.Party.get(payload.readUnsignedByte());
 
         switch (opcode) {
-            case CREATE -> PartyController.create(session);
+            case CREATE -> {
+                // Clients from before descriptions send an empty body.
+                String description = payload.size() > 0 ? sanitizeDescription(payload.readString()) : "";
+
+                PartyController.create(session, description);
+            }
             case JOIN -> PartyController.join(session, payload.readString());
             case FIND -> PartyController.find(session);
+            case LIST -> PartyController.list(session);
             case LEAVE -> {
                 // Leaving nothing is worth telling the client about.
                 if (!PartyController.leave(session)) session.send(new ErrorPacket(Opcodes.Error.NOT_IN_PARTY));
@@ -280,6 +286,23 @@ public class ServerPacketHandler extends PacketHandler {
 
     private void handleTime(InputBuffer payload) {
         session.send(new TimePacket(payload.readLong(), Clock.now()));
+    }
+
+    /**
+     * Keeps a party description to printable ASCII, trimmed and cut to the limit.
+     * @param text The description as the client sent it.
+     * @return The description that is listed.
+     */
+
+    static String sanitizeDescription(String text) {
+        StringBuilder kept = new StringBuilder();
+
+        // Lists are drawn by clients with a plain font.
+        for (char character : text.toCharArray()) if (character >= 0x20 && character <= 0x7E) kept.append(character);
+
+        String trimmed = kept.toString().strip();
+
+        return trimmed.substring(0, Math.min(trimmed.length(), Constants.MAX_DESCRIPTION_LENGTH));
     }
 
     /**
