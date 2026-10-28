@@ -49,7 +49,7 @@ datagrams), and with `DEBUG_LEVEL=verbose` also every game data packet and UDP s
 ## Limits
 
 Each connection has a rate per packet kind: a short burst, then a steady rate (chat 1 a second,
-party requests 1 a second, game data 60 a second, clock requests 2 a second; see `.env.defaults`).
+party requests (including `LIST`) 1 a second, game data 60 a second, clock requests 2 a second; see `.env.defaults`).
 A packet over its rate is dropped and counts as a strike; strikes are forgiven over time, and a
 connection that keeps flooding is closed. One address may hold 8 connections, and a connection
 that has not said hello within 10 seconds is closed.
@@ -64,7 +64,7 @@ for packets that have one, then the payload. Frames are at most 65,536 bytes, le
 Integers are big-endian; a string is a 2-byte length then UTF-8 bytes (-1 for empty).
 
 The first packet must be `HELLO`. Anything malformed, unknown or oversized closes the connection.
-Names and versions are 1 to 32 characters, chat messages 1 to 256. Parties hold 4 players.
+Names and versions are 1 to 32 characters, chat messages 1 to 256. Parties hold 4 players. A party description is at most 48 characters of printable ASCII, and a `LIST` answer carries at most 32 parties (`MAX_DESCRIPTION_LENGTH`, `MAX_LISTED_PARTIES`).
 
 | Id | Packet | Direction | Payload |
 |---|---|---|---|
@@ -84,14 +84,21 @@ Names and versions are 1 to 32 characters, chat messages 1 to 256. Parties hold 
 
 | Opcode | Name | Direction | Payload |
 |---|---|---|---|
-| 0 | `CREATE` | client → server | none; answered with `INFO`, the creator hosts a party (match finding can fill it, its code invites) |
+| 0 | `CREATE` | client → server | description string, optional (an empty body means none); answered with `INFO`, the creator hosts a party (match finding can fill it, its code invites) |
 | 1 | `JOIN` | client → server | join code string (6 characters, any case) |
 | 2 | `LEAVE` | client → server | none |
-| 3 | `INFO` | server → client | code string, host id int, member count byte, then id int + name string per member |
+| 3 | `INFO` | server → client | code string, host id int, member count byte, then id int + name string per member, then description string |
 | 4 | `JOINED` | server → members | id int, name string |
 | 5 | `LEFT` | server → members | id int |
 | 6 | `END` | server → members | none; the host left, so the party is gone |
-| 7 | `FIND` | client → server | none; joins the oldest party with room, else hosts a new one; answered with `INFO` |
+| 7 | `FIND` | client → server | none; joins the oldest party with room, else hosts a new one; answered with `INFO`; the party it creates has no description |
+| 8 | `LIST` | client → server | none; allowed in or out of a party, answered with `LIST` |
+| | | server → client | count byte (at most 32), then per party: code string, host name string, member count byte, max party size byte, description string |
+
+The description is sanitised on the server: only printable ASCII (0x20 to 0x7E) is kept, the ends are
+trimmed and it is cut to 48 characters. `LIST` names the parties with room (members below the party
+size), oldest first, without the requester's own party; created and match-found parties both appear.
+It shares the party-request rate, which allows a request every 3 seconds.
 
 `ERROR` reasons: 0 `PARTY_NOT_FOUND`, 1 `PARTY_FULL`, 2 `ALREADY_IN_PARTY`, 3 `NOT_IN_PARTY`.
 
