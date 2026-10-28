@@ -9,6 +9,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import com.openrac.net.datagrams.Datagrams;
+import com.openrac.net.datagrams.OutgoingDatagram;
 import com.openrac.net.netty.PacketChannelInitializer;
 import com.openrac.net.packets.Opcodes;
 import com.openrac.net.packets.Packets;
@@ -21,6 +23,7 @@ import com.openrac.net.packets.out.ErrorPacket;
 import com.openrac.net.packets.out.HelloPacket;
 import com.openrac.net.packets.out.PartyPacket;
 import com.openrac.net.packets.out.TimePacket;
+import com.openrac.net.packets.out.UdpPacket;
 
 import java.nio.ByteBuffer;
 
@@ -220,6 +223,68 @@ public class PacketCodecTests {
             Assertions.assertEquals(123_456_789_012L, payload.readLong());
             Assertions.assertEquals(42L, payload.readLong());
             Assertions.assertEquals(0, payload.size());
+        }
+    }
+
+    @Nested
+    @DisplayName("Udp Tests")
+    class UdpTests {
+
+        @Test
+        @DisplayName("A UDP offer carries the token and the port")
+        public void testUdpOffer() {
+            InputBuffer payload = roundTrip(new UdpPacket(-0x1234_5678_9ABC_DEF0L, 7770), Packets.UDP);
+
+            Assertions.assertEquals(-0x1234_5678_9ABC_DEF0L, payload.readLong());
+            Assertions.assertEquals(7770, payload.readInt());
+            Assertions.assertEquals(0, payload.size());
+        }
+    }
+
+    @Nested
+    @DisplayName("Datagram Tests")
+    class DatagramTests {
+
+        @Test
+        @DisplayName("A bind carries the session id, the token and the kind only")
+        public void testBind() {
+            InputBuffer payload = new InputBuffer(new OutgoingDatagram(3, Long.MIN_VALUE, Datagrams.BIND).toByteArray());
+
+            Assertions.assertEquals(3, payload.readInt());
+            Assertions.assertEquals(Long.MIN_VALUE, payload.readLong());
+            Assertions.assertEquals(Datagrams.BIND, Datagrams.get(payload.readUnsignedByte()));
+            Assertions.assertEquals(0, payload.size());
+        }
+
+        @Test
+        @DisplayName("Client state carries the header, the target and the bytes")
+        public void testClientState() {
+            byte[] bytes = { 0, 1, -1, 127, -128 };
+            InputBuffer payload = new InputBuffer(new OutgoingDatagram(3, 99L, NetworkConstants.BROADCAST, bytes).toByteArray());
+
+            Assertions.assertEquals(3, payload.readInt());
+            Assertions.assertEquals(99L, payload.readLong());
+            Assertions.assertEquals(Datagrams.STATE, Datagrams.get(payload.readUnsignedByte()));
+            Assertions.assertEquals(NetworkConstants.BROADCAST, payload.readInt());
+            Assertions.assertArrayEquals(bytes, payload.readRemainingBytes());
+        }
+
+        @Test
+        @DisplayName("Server state carries the kind, the sender and the bytes")
+        public void testServerState() {
+            byte[] bytes = { 4, 5 };
+            InputBuffer payload = new InputBuffer(new OutgoingDatagram(8, bytes).toByteArray());
+
+            Assertions.assertEquals(Datagrams.STATE, Datagrams.get(payload.readUnsignedByte()));
+            Assertions.assertEquals(8, payload.readInt());
+            Assertions.assertArrayEquals(bytes, payload.readRemainingBytes());
+        }
+
+        @Test
+        @DisplayName("Kinds past the last resolve to nothing")
+        public void testUnknownKind() {
+            Assertions.assertNull(Datagrams.get(Datagrams.values().length));
+            Assertions.assertNull(Datagrams.get(-1));
         }
     }
 
