@@ -1,8 +1,9 @@
 # OpenRAC Server
 
-The multiplayer backend for OpenRAC. Each game keeps one TCP connection to this server. The server
-links players into parties and forwards their traffic. The host's game is authoritative, and the
-server never reads the game data it forwards.
+The multiplayer backend for OpenRAC. Each game keeps one TCP connection to this server, and may add
+UDP on the same port for game state (see [UDP](#udp)). The server links players into parties and
+forwards their traffic. The host's game is authoritative, and the server never reads the game data
+it forwards.
 
 In its current state it serves only Ratchet & Clank 1 multiplayer mods (and possibly Ratchet &
 Clank 2). The same backend is meant to serve the Ratchet & Clank 3 and 4 decompilations later.
@@ -42,8 +43,8 @@ size and the limits below. Put local changes in a `.env` beside it (ignored by g
 the defaults, and command-line pairs (`--port 9000`, `--max-party-size 2`) override both.
 
 Logging is coloured and levelled. `DEBUG_LEVEL` picks what shows (`all`, the default, `verbose`,
-`warning`, `error` or `none`); `DEBUGGING=true` adds the debug lines (party chat), and with
-`DEBUG_LEVEL=verbose` also every game data packet.
+`warning`, `error` or `none`); `DEBUGGING=true` adds the debug lines (party chat, dropped
+datagrams), and with `DEBUG_LEVEL=verbose` also every game data packet and UDP state datagram.
 
 ## Limits
 
@@ -52,6 +53,9 @@ party requests 1 a second, game data 60 a second, clock requests 2 a second; see
 A packet over its rate is dropped and counts as a strike; strikes are forgiven over time, and a
 connection that keeps flooding is closed. One address may hold 8 connections, and a connection
 that has not said hello within 10 seconds is closed.
+
+UDP `STATE` has the same rate per session as `DATA`. Over it, a datagram is dropped, never struck:
+UDP never closes a session.
 
 ## Wire format
 
@@ -74,6 +78,7 @@ Names and versions are 1 to 32 characters, chat messages 1 to 256. Parties hold 
 | 4 | `ERROR` | server → client | reason opcode byte |
 | 5 | `TIME` | client → server | client time long (ms) |
 | | | server → client | the client time echoed, server time long (ms since the server started) |
+| 6 | `UDP` | server → client | UDP token long, UDP port int; sent right after the `HELLO` answer |
 
 `PARTY` opcodes:
 
@@ -96,6 +101,35 @@ Session ids start at 1.
 
 `TIME` lets each game stamp its data against one clock: from its send time, the echo and the
 server's time, a client estimates the round trip and its offset to the server's clock.
+
+## UDP
+
+UDP is optional. Connecting, parties, chat, the clock and errors only ever use TCP, and so do game
+events that must arrive (`DATA`). Game state, which the next update replaces anyway, may use UDP.
+A client whose UDP is blocked never binds and keeps sending and receiving state as TCP `DATA`.
+
+- **Token.** After answering `HELLO`, the server sends `UDP`: a random 64-bit token for the session
+  and the port it takes datagrams on (the TCP port).
+- **Binding.** Any valid datagram (the right session id and token) binds its sender's address to the
+  session, and a later one from a new address rebinds it, as NAT may move the port. A client sends
+  `BIND` every few seconds to keep its NAT mapping open; the server runs no timers for it.
+- **Routing.** `STATE` follows the `DATA` rules: a member's goes to the host, the host's to target 0
+  (every other member) or one member. Each recipient gets it by UDP once bound, otherwise as a TCP
+  `DATA` packet from the sender.
+- **Drops.** A datagram over 1,200 bytes, cut short, of an unknown kind, or naming an unknown session
+  or the wrong token is dropped without an answer.
+
+Datagrams have no length prefix. Integers are big-endian.
+
+| Direction | Layout |
+|---|---|
+| client → server | session id int, token long, kind byte, then the kind's payload |
+| server → client | kind byte, then the kind's payload |
+
+| Kind | Name | Payload |
+|---|---|---|
+| 0 | `BIND` | client → server: none |
+| 1 | `STATE` | client → server: target id int, opaque bytes to the end; server → client: sender id int, opaque bytes |
 
 ## License
 
