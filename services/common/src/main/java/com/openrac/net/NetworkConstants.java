@@ -13,4 +13,7 @@ public class NetworkConstants {
     public static final int BROADCAST = 0; // Data target for every member, as session ids start at 1.
 
     public static final int FEATURE_KICK = 1; // UDP offer's feature bit: the server takes KICK.
+    public static final int FEATURE_RESUME = 2; // UDP offer's feature bit: the server takes RESUME.
+
+    public static final int CLIENT_RESUMES = 1; // HELLO's client bit: this client comes back with RESUME.
 }

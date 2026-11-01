@@ -103,7 +103,7 @@ Names and versions are 1 to 32 characters, chat messages 1 to 256. Parties hold 
 | 4 | `ERROR` | server → client | reason opcode byte |
 | 5 | `TIME` | client → server | client time long (ms) |
 | | | server → client | the client time echoed, server time long (ms since the server started) |
-| 6 | `UDP` | server → client | UDP token long, UDP port int, feature bits byte; sent right after the `HELLO` answer |
+| 6 | `UDP` | server → client | UDP token long, UDP port int, feature bits byte, resume token long; sent right after the `HELLO` answer |
 
 `PARTY` opcodes:
 
@@ -112,7 +112,7 @@ Names and versions are 1 to 32 characters, chat messages 1 to 256. Parties hold 
 | 0 | `CREATE` | client → server | description string, optional (an empty body means none); answered with `INFO`, the creator hosts a party (match finding can fill it, its code invites) |
 | 1 | `JOIN` | client → server | join code string (6 characters, any case) |
 | 2 | `LEAVE` | client → server | none |
-| 3 | `INFO` | server → client | code string, host id int, member count byte, then id int + name string per member, then description string |
+| 3 | `INFO` | server → client | code string, host id int, member count byte, then id int + name string per member, then description string; once either means something, the host's epoch int, then the count byte and ids int of the members away |
 | 4 | `JOINED` | server → members | id int, name string |
 | 5 | `LEFT` | server → members | id int |
 | 6 | `END` | server → members | none; the host left, so the party is gone |
@@ -120,7 +120,8 @@ Names and versions are 1 to 32 characters, chat messages 1 to 256. Parties hold 
 | 8 | `LIST` | client → server | none; allowed in or out of a party, answered with `LIST` |
 | | | server → client | count byte (at most 32), then per party: code string, host name string, member count byte, max party size byte, description string |
 | 9 | `HOST_CHANGED` | | reserved for host migration, nothing sends it yet |
-| 10 | `RESUME` | | reserved for rejoining after a drop, nothing sends it yet |
+| 10 | `RESUME` | client → server | party code string, session id int, resume token long; asked after `HELLO` on a new connection (below) |
+| | | server → members | id int, byte: 0 its connection dropped and its slot waits, 1 it came back |
 | 11 | `KICK` | client → server | member id int; from the host only (else `NOT_HOST`). The member gets `KICKED`, the others `LEFT`. Its connection stays and its code still works, but `FIND` no longer puts it in that party. An id that is not a member's does nothing |
 | 12 | `KICKED` | server → member | none; the host removed it from the party |
 
@@ -130,10 +131,19 @@ size), oldest first, without the requester's own party; created and match-found 
 It shares the party-request rate, which allows a request every 3 seconds.
 
 `ERROR` reasons: 0 `PARTY_NOT_FOUND`, 1 `PARTY_FULL`, 2 `ALREADY_IN_PARTY`, 3 `NOT_IN_PARTY`,
-4 `NOT_HOST`.
+4 `NOT_HOST`, 5 `RESUME_REFUSED`.
 
 `UDP`'s feature bits say which requests this server takes, since an unknown one closes the
-connection: bit 0 (1) `KICK`. A client from before them stops reading at the port.
+connection: bit 0 (1) `KICK`, bit 1 (2) `RESUME`. A client from before them stops reading at the port.
+
+A client that can come back says so with a byte after its name in `HELLO` (bit 0). Its connection
+dropping is then no leaving: the others get `RESUME` with 0, and the session waits for
+`RESUME_SECONDS` (120), keeping its id, its slot and its place in the party. On a new connection the
+client says `HELLO`, then `RESUME`: refused with `RESUME_REFUSED`, or answered as if greeted again
+(`HELLO` with the old id, `UDP`, `INFO`), the others told with `RESUME` 1. UDP is bound again from
+nothing. In a party, a client that can come back and has been silent for `PARTY_IDLE_SECONDS` (5) on
+both TCP and UDP is closed, since a machine that dies closes nothing. A client without that bit
+leaves when its connection goes, as ever.
 
 `DATA` routing: from a member, the server sends it to the host and ignores the target. From the
 host, target 0 sends it to every other member, and a session id sends it to that member only.

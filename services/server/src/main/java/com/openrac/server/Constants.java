@@ -41,6 +41,11 @@ public class Constants {
     public static final int UDP_TIMEOUT_SECONDS = Environment.getInt("UDP_TIMEOUT_SECONDS", 15); // Quiet UDP falls back to TCP.
     public static final int HELLO_TIMEOUT_SECONDS = Environment.getInt("HELLO_TIMEOUT_SECONDS", 10); // Hello within this, or closed.
 
+    // A dropped player keeps its slot this long; a client that has not been heard from for the
+    // idle time is taken for dropped, as a machine that dies closes nothing.
+    public static final int RESUME_SECONDS = Environment.getInt("RESUME_SECONDS", 120);
+    public static final int PARTY_IDLE_SECONDS = Environment.getInt("PARTY_IDLE_SECONDS", 5);
+
     // Mod sets behind short codes: a request's size, and what the store keeps.
     public static final int MODSET_MAX_BODY_BYTES = Environment.getInt("MODSET_MAX_BODY_BYTES", 16_384); // Compressed.
     public static final int MODSET_MAX_JSON_BYTES = Environment.getInt("MODSET_MAX_JSON_BYTES", 65_536); // Inflated.

@@ -44,6 +44,19 @@ public class PartyPacket extends OutgoingPacket {
     }
 
     /**
+     * RESUME from the server: a member's connection went away, or it came back.
+     * @param sessionId The member.
+     * @param back Whether it came back.
+     */
+
+    public PartyPacket(int sessionId, boolean back) {
+        this(Opcodes.Party.RESUME);
+
+        writeInt(sessionId);
+        writeUnsignedByte(back ? 1 : 0);
+    }
+
+    /**
      * A party opcode carrying serialized data: INFO with a party, JOINED with a member.
      * @param opcode The party opcode.
      * @param data The serialized party or member.

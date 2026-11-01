@@ -23,6 +23,19 @@ public class HelloPacket extends OutgoingPacket {
     }
 
     /**
+     * Client to server: who is connecting, and what it can do.
+     * @param version The client's version.
+     * @param name The player's display name.
+     * @param features The client's bits.
+     */
+
+    public HelloPacket(String version, String name, int features) {
+        this(version, name);
+
+        writeUnsignedByte(features);
+    }
+
+    /**
      * Server to client: the session id assigned to the connection.
      * @param sessionId The new session id.
      */

@@ -20,7 +20,7 @@ public final class Opcodes {
         FIND, // Client joins any party with room, or hosts a new one.
         LIST, // Client asks for the parties it could join; the server answers with them.
         HOST_CHANGED, // Reserved for host migration; nothing sends it yet.
-        RESUME, // Reserved for rejoining after a drop; nothing sends it yet.
+        RESUME, // Client rejoins after a drop; the server tells members who went away and came back.
         KICK, // The host asks the server to remove a member.
         KICKED; // Server tells a member the host removed it.
 
@@ -43,7 +43,8 @@ public final class Opcodes {
         PARTY_FULL,
         ALREADY_IN_PARTY,
         NOT_IN_PARTY,
-        NOT_HOST;
+        NOT_HOST,
+        RESUME_REFUSED; // Its slot is gone, or the token is wrong.
 
         /**
          * Resolves an error reason from its byte.

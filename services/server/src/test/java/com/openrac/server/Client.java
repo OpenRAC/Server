@@ -5,6 +5,7 @@ import io.netty.buffer.Unpooled;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.jupiter.api.Assertions;
 
+import com.openrac.net.NetworkConstants;
 import com.openrac.net.packets.Opcodes;
 import com.openrac.net.packets.Packets;
 import com.openrac.net.packets.model.InputBuffer;
@@ -25,6 +26,7 @@ class Client {
     int id;
     long token; // The UDP token the server sent after hello.
     int features; // The bits of what the server said it takes.
+    long resumeToken; // The token that takes this session back.
 
     /**
      * Builds the server's pipeline on the embedded channel.
@@ -41,6 +43,24 @@ class Client {
 
     void hello(String name) {
         send(new HelloPacket("0.1.0", name));
+        readGreeting();
+    }
+
+    /**
+     * Says hello as a client that comes back with RESUME.
+     * @param name The display name.
+     */
+
+    void helloResuming(String name) {
+        send(new HelloPacket("0.1.0", name, NetworkConstants.CLIENT_RESUMES));
+        readGreeting();
+    }
+
+    /**
+     * Reads the session id and the UDP offer.
+     */
+
+    void readGreeting() {
         id = receive(Packets.HELLO).readInt();
 
         InputBuffer udp = receive(Packets.UDP);
@@ -48,6 +68,7 @@ class Client {
         token = udp.readLong();
         Assertions.assertEquals(Constants.PORT, udp.readInt());
         features = udp.readUnsignedByte();
+        resumeToken = udp.readLong();
     }
 
     /**

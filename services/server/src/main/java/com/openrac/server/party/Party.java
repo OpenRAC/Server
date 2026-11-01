@@ -22,6 +22,7 @@ public class Party {
     private final String code;
     private final Session host;
     private final String description;
+    private int epoch; // One more at each change of host.
 
     private final List<Session> members = new CopyOnWriteArrayList<>();
     private final Set<Integer> kicked = new HashSet<>(); // Only touched under the controller's lock.
@@ -71,13 +72,17 @@ public class Party {
     public void forward(Session sender, int target, Consumer<Session> delivery) {
         // A member's data only ever goes to the authoritative host.
         if (sender != host) {
-            delivery.accept(host);
+            if (!host.isAway()) delivery.accept(host);
+
             return;
         }
 
         for (Session member : members) {
             // The host already has its own data.
             if (member == host) continue;
+
+            // Nothing reaches a member whose connection dropped.
+            if (member.isAway()) continue;
 
             // Broadcast reaches everyone, otherwise only the named member.
             if (target == NetworkConstants.BROADCAST || member.getId() == target) delivery.accept(member);
@@ -189,7 +194,8 @@ public class Party {
 
     /**
      * Writes the party as a new member sees it.
-     * @return The code, the host's id, then the member count, each member and the description.
+     * @return The code, the host's id, the member count, each member, the description, then, once
+     * either means something, the host's epoch and the ids of the members away.
      */
 
     public OutputBuffer serialize() {
@@ -202,6 +208,16 @@ public class Party {
         for (Session member : members) buffer.append(member.serialize());
 
         buffer.writeString(description);
+
+        List<Session> away = members.stream().filter(Session::isAway).toList();
+
+        // Most parties have neither, and shipped clients stop at the description.
+        if (epoch == 0 && away.isEmpty()) return buffer;
+
+        buffer.writeInt(epoch);
+        buffer.writeUnsignedByte(away.size());
+
+        for (Session member : away) buffer.writeInt(member.getId());
 
         return buffer;
     }

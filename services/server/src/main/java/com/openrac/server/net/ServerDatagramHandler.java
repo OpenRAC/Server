@@ -89,6 +89,7 @@ public class ServerDatagramHandler extends SimpleChannelInboundHandler<DatagramP
             return;
         }
 
+        session.touch();
         bind(session, sender);
 
         switch (kind) {

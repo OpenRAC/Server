@@ -28,27 +28,35 @@ public class Session {
 
     private final int id;
     private final String name;
-    private final Channel channel;
+    private volatile Channel channel; // Replaced when the player resumes.
 
     // Read from other members' threads, written under the party lock.
     private volatile Party party;
 
     private final long token = random.nextLong(); // Proves a datagram came from this session's client.
+    private final long resumeToken = random.nextLong(); // Proves a RESUME came from this session's client.
     private final RateLimit stateLimit = new RateLimit(Constants.DATA_BURST, Constants.DATA_PER_SECOND); // Datagram loop only.
 
     private volatile InetSocketAddress udpAddress; // Null until a valid datagram arrives.
     private volatile long udpHeard; // System.nanoTime() of the last valid datagram.
 
+    private final boolean resumes; // This client comes back with RESUME.
+    private volatile boolean away; // Its connection dropped and its slot waits for it.
+    private volatile long awayAt; // Clock.now() of the drop.
+    private volatile long heardAt = Clock.now(); // Clock.now() of the last packet or datagram.
+
     /**
      * Creates a session with the next free id.
      * @param channel The connection's channel.
      * @param name The player's display name.
+     * @param resumes Whether the client said it comes back with RESUME.
      */
 
-    public Session(Channel channel, String name) {
+    public Session(Channel channel, String name, boolean resumes) {
         this.id = nextId.getAndIncrement();
         this.name = name;
         this.channel = channel;
+        this.resumes = resumes;
     }
 
     /**
@@ -57,6 +65,9 @@ public class Session {
      */
 
     public void send(OutgoingPacket packet) {
+        // Nothing reaches a connection that has gone.
+        if (away) return;
+
         channel.writeAndFlush(packet);
     }
 
@@ -77,6 +88,106 @@ public class Session {
         }
 
         udp.writeAndFlush(new DatagramPacket(Unpooled.wrappedBuffer(datagram), address));
+    }
+
+    /**
+     * Marks the connection gone, keeping the session for its client to come back to.
+     * @param now The time of the drop, as Clock.now().
+     */
+
+    public void markAway(long now) {
+        away = true;
+        awayAt = now;
+    }
+
+    /**
+     * Moves the session to a new connection, which starts out on TCP.
+     * @param channel The connection that proved it holds this session.
+     * @return The connection it had.
+     */
+
+    public Channel rebind(Channel channel) {
+        Channel old = this.channel;
+
+        this.channel = channel;
+        udpAddress = null;
+        away = false;
+        heardAt = Clock.now();
+
+        return old;
+    }
+
+    /**
+     * Notes that something came from the client.
+     */
+
+    public void touch() {
+        heardAt = Clock.now();
+    }
+
+    /**
+     * Closes the connection of a client that went quiet.
+     */
+
+    public void close() {
+        channel.close();
+    }
+
+    /**
+     * @param channel A connection.
+     * @return Whether the session is on that connection.
+     */
+
+    public boolean isOn(Channel channel) {
+        return this.channel == channel;
+    }
+
+    /**
+     * @return The connection this session is on.
+     */
+
+    public Channel getChannel() {
+        return channel;
+    }
+
+    /**
+     * @return Whether the client comes back with RESUME.
+     */
+
+    public boolean resumes() {
+        return resumes;
+    }
+
+    /**
+     * @return Whether the connection dropped and the slot waits.
+     */
+
+    public boolean isAway() {
+        return away;
+    }
+
+    /**
+     * @return When the connection dropped, as Clock.now().
+     */
+
+    public long getAwayAt() {
+        return awayAt;
+    }
+
+    /**
+     * @return When the client was last heard from, as Clock.now().
+     */
+
+    public long getHeardAt() {
+        return heardAt;
+    }
+
+    /**
+     * @return The secret token that takes this session back.
+     */
+
+    public long getResumeToken() {
+        return resumeToken;
     }
 
     /**

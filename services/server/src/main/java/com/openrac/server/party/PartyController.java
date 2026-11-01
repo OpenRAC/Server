@@ -1,14 +1,23 @@
 package com.openrac.server.party;
 
+import com.openrac.net.NetworkConstants;
 import com.openrac.net.packets.Opcodes;
 import com.openrac.net.packets.model.OutputBuffer;
 import com.openrac.net.packets.out.ErrorPacket;
+import com.openrac.net.packets.out.HelloPacket;
 import com.openrac.net.packets.out.PartyPacket;
+import com.openrac.net.packets.out.UdpPacket;
 import com.openrac.server.Constants;
 import com.openrac.server.Session;
+import com.openrac.server.SessionRegistry;
 import com.openrac.utils.logger.Log;
 
+import io.netty.channel.Channel;
+
+import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -234,6 +243,92 @@ public class PartyController {
 
         Log.info(describe(session) + " left party " + party.getCode() + ".");
         return true;
+    }
+
+    /**
+     * A connection dropped. A client that comes back keeps its slot, and the others are told; any
+     * other leaves as it always did.
+     * @param session The session whose connection went.
+     * @param now The time of the drop, as Clock.now().
+     */
+
+    public static synchronized void dropped(Session session, long now) {
+        Party party = session.getParty();
+
+        // In no party, or one with no way back.
+        if (party == null || !session.resumes()) {
+            leave(session);
+            return;
+        }
+
+        session.markAway(now);
+        party.broadcast(new PartyPacket(session.getId(), false));
+
+        Log.info(describe(session) + " dropped out of party " + party.getCode() + "; its slot waits.");
+    }
+
+    /**
+     * Takes a session back: the connection that proved it moves onto the old session, which keeps
+     * its id, its party and its slot. The session the new connection made for itself is dropped.
+     * @param fresh The session of the connection asking.
+     * @param code The party's join code.
+     * @param id The id of the session to take back.
+     * @param token That session's resume token.
+     * @return The session taken back, or null when it was refused.
+     */
+
+    public static synchronized Session resume(Session fresh, String code, int id, long token) {
+        Party party = parties.get(code);
+
+        // A new connection is in no party; the party may have ended since.
+        if (fresh.getParty() != null || party == null) return null;
+
+        Session held = null;
+
+        for (Session member : party.getMembers()) if (member.getId() == id) held = member;
+
+        // Compared whole: the token is all that stands between a stranger and the slot.
+        byte[] asked = ByteBuffer.allocate(Long.BYTES).putLong(token).array();
+
+        if (held == null || !MessageDigest.isEqual(asked, ByteBuffer.allocate(Long.BYTES).putLong(held.getResumeToken()).array())) return null;
+
+        // Back before the server noticed it had gone, and the old connection is what is stale.
+        Channel stale = held.rebind(fresh.getChannel());
+
+        stale.close();
+
+        SessionRegistry.remove(fresh);
+        SessionRegistry.add(held);
+
+        // The connection now knows this session by its old id.
+        held.send(new HelloPacket(held.getId()));
+        held.send(new UdpPacket(held.getToken(), Constants.PORT, NetworkConstants.FEATURE_KICK | NetworkConstants.FEATURE_RESUME, held.getResumeToken()));
+        held.send(new PartyPacket(Opcodes.Party.INFO, party.serialize()));
+
+        for (Session member : party.getMembers()) if (member != held) member.send(new PartyPacket(held.getId(), true));
+
+        Log.info(describe(held) + " came back to party " + party.getCode() + ".");
+
+        return held;
+    }
+
+    /**
+     * Once a second: closes clients gone quiet, and gives up on slots whose time is out.
+     * @param now The time, as Clock.now().
+     */
+
+    public static synchronized void sweep(long now) {
+        for (Party party : new ArrayList<>(parties.values())) {
+            for (Session member : party.getMembers()) {
+                // Only a client that comes back keeps saying something while it stands still.
+                if (member.resumes() && !member.isAway() && now - member.getHeardAt() >= Constants.PARTY_IDLE_SECONDS * 1000L) {
+                    Log.info(describe(member) + " went quiet.");
+                    member.close();
+                }
+
+                if (member.isAway() && now - member.getAwayAt() >= Constants.RESUME_SECONDS * 1000L) leave(member);
+            }
+        }
     }
 
     /**

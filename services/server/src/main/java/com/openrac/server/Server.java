@@ -15,6 +15,7 @@ import com.openrac.server.http.HttpChannelInitializer;
 import com.openrac.server.http.ModSetStore;
 import com.openrac.server.net.ServerChannelInitializer;
 import com.openrac.server.net.ServerDatagramHandler;
+import com.openrac.server.party.PartyController;
 import com.openrac.system.Environment;
 import com.openrac.utils.logger.Log;
 
@@ -38,6 +39,15 @@ public class Server {
     private Channel channel;
     private Channel udpChannel; // The one datagram socket every session shares.
     private Channel httpChannel; // The launcher's mod sets.
+
+    // Gives up on what waited too long; never on an event loop's time.
+    private final ScheduledExecutorService sweeper = Executors.newSingleThreadScheduledExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "party-sweeper");
+
+        thread.setDaemon(true);
+
+        return thread;
+    });
 
     private final ModSetStore modSets = new ModSetStore();
     private final Path modSetFile = Path.of(Constants.MODSET_FILE);
@@ -101,6 +111,8 @@ public class Server {
                 .sync()
                 .channel();
 
+        sweeper.scheduleWithFixedDelay(() -> PartyController.sweep(Clock.now()), 1, 1, TimeUnit.SECONDS);
+
         Log.notice(Constants.NAME + " is listening on " + host + ":" + port + " (TCP and UDP).");
     }
 
@@ -162,6 +174,7 @@ public class Server {
         }
 
         saver.shutdownNow();
+        sweeper.shutdownNow();
 
         // Both quiet periods run at once before either is awaited.
         Future<?> boss = bossGroup.shutdownGracefully();
