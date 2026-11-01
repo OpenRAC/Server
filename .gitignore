@@ -14,5 +14,8 @@ build/
 # Local environment overrides (.env.defaults is committed).
 .env
 
+# The stored mod sets.
+/data/
+
 # macOS
 .DS_Store

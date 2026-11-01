@@ -11,7 +11,7 @@ import com.openrac.net.packets.model.OutputBuffer;
 
 public class PartyPacket extends OutgoingPacket {
     /**
-     * A party opcode with no payload: CREATE, LEAVE or END.
+     * A party opcode with no payload: CREATE, LEAVE, END or KICKED.
      * @param opcode The party opcode.
      */
 
@@ -32,7 +32,7 @@ public class PartyPacket extends OutgoingPacket {
     }
 
     /**
-     * A party opcode carrying one session id: LEFT.
+     * A party opcode carrying one session id: LEFT or KICK.
      * @param opcode The party opcode.
      * @param sessionId The session the notice is about.
      */
@@ -41,6 +41,32 @@ public class PartyPacket extends OutgoingPacket {
         this(opcode);
 
         writeInt(sessionId);
+    }
+
+    /**
+     * HOST_CHANGED from the server: who hosts now.
+     * @param sessionId The new host.
+     * @param epoch How many times the party's host has changed.
+     */
+
+    public PartyPacket(int sessionId, int epoch) {
+        this(Opcodes.Party.HOST_CHANGED);
+
+        writeInt(sessionId);
+        writeInt(epoch);
+    }
+
+    /**
+     * RESUME from the server: a member's connection went away, or it came back.
+     * @param sessionId The member.
+     * @param back Whether it came back.
+     */
+
+    public PartyPacket(int sessionId, boolean back) {
+        this(Opcodes.Party.RESUME);
+
+        writeInt(sessionId);
+        writeUnsignedByte(back ? 1 : 0);
     }
 
     /**

@@ -6,7 +6,9 @@ import com.openrac.net.packets.model.OutputBuffer;
 import com.openrac.server.Constants;
 import com.openrac.server.Session;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
@@ -18,10 +20,14 @@ import java.util.function.Consumer;
 
 public class Party {
     private final String code;
-    private final Session host;
+    private volatile Session host; // Read from other members' threads, written under the party lock.
     private final String description;
+    private int epoch; // One more at each change of host.
 
     private final List<Session> members = new CopyOnWriteArrayList<>();
+    private final Set<Integer> kicked = new HashSet<>(); // Only touched under the controller's lock.
+    private final Set<Integer> declined = new HashSet<>(); // Only touched under the controller's lock.
+    private List<Integer> successors = List.of(); // Only touched under the controller's lock.
 
     /**
      * Creates a party with its host as the first member.
@@ -68,13 +74,17 @@ public class Party {
     public void forward(Session sender, int target, Consumer<Session> delivery) {
         // A member's data only ever goes to the authoritative host.
         if (sender != host) {
-            delivery.accept(host);
+            if (!host.isAway()) delivery.accept(host);
+
             return;
         }
 
         for (Session member : members) {
             // The host already has its own data.
             if (member == host) continue;
+
+            // Nothing reaches a member whose connection dropped.
+            if (member.isAway()) continue;
 
             // Broadcast reaches everyone, otherwise only the named member.
             if (target == NetworkConstants.BROADCAST || member.getId() == target) delivery.accept(member);
@@ -97,6 +107,87 @@ public class Party {
 
     void remove(Session session) {
         members.remove(session);
+    }
+
+    /**
+     * Keeps a removed member out of match finding. Called under the controller's lock.
+     * @param session The session the host removed.
+     */
+
+    void markKicked(Session session) {
+        kicked.add(session.getId());
+    }
+
+    /**
+     * Called under the controller's lock.
+     * @param session A session to check.
+     * @return Whether the host removed the session.
+     */
+
+    boolean hasKicked(Session session) {
+        return kicked.contains(session.getId());
+    }
+
+    /**
+     * Takes the host's word on who follows it. Called under the controller's lock.
+     * @param ids Session ids, the first choice first.
+     */
+
+    void setSuccessors(List<Integer> ids) {
+        successors = ids;
+    }
+
+    /**
+     * Keeps a member that could not take over from being asked again. Called under the controller's
+     * lock.
+     * @param session The session that declined.
+     */
+
+    void decline(Session session) {
+        declined.add(session.getId());
+    }
+
+    /**
+     * Finds who hosts next: the host's first choice still here. Called under the controller's lock.
+     * @return The session, or null when nobody can, as with a host that named nobody.
+     */
+
+    Session nextHost() {
+        for (int id : successors) {
+            if (declined.contains(id)) continue;
+
+            for (Session member : members) if (member.getId() == id && member != host && !member.isAway()) return member;
+        }
+
+        return null;
+    }
+
+    /**
+     * Makes the session the host. Called under the controller's lock.
+     * @param session The new host.
+     * @return The new epoch.
+     */
+
+    int changeHost(Session session) {
+        host = session;
+
+        return ++epoch;
+    }
+
+    /**
+     * @return Whether the party has a host who named a successor.
+     */
+
+    boolean hasSuccessors() {
+        return !successors.isEmpty();
+    }
+
+    /**
+     * @return Whether the party waits for a host that dropped.
+     */
+
+    boolean isWaiting() {
+        return host.isAway();
     }
 
     /**
@@ -167,7 +258,8 @@ public class Party {
 
     /**
      * Writes the party as a new member sees it.
-     * @return The code, the host's id, then the member count, each member and the description.
+     * @return The code, the host's id, the member count, each member, the description, then, once
+     * either means something, the host's epoch and the ids of the members away.
      */
 
     public OutputBuffer serialize() {
@@ -180,6 +272,16 @@ public class Party {
         for (Session member : members) buffer.append(member.serialize());
 
         buffer.writeString(description);
+
+        List<Session> away = members.stream().filter(Session::isAway).toList();
+
+        // Most parties have neither, and shipped clients stop at the description.
+        if (epoch == 0 && away.isEmpty()) return buffer;
+
+        buffer.writeInt(epoch);
+        buffer.writeUnsignedByte(away.size());
+
+        for (Session member : away) buffer.writeInt(member.getId());
 
         return buffer;
     }

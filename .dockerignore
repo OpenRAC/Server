@@ -9,5 +9,6 @@
 out
 services/*/out
 .env
+data
 *.iml
 .DS_Store

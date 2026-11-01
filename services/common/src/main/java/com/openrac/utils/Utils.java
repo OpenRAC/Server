@@ -17,8 +17,12 @@ public class Utils {
         for (int i = 0; i < argument.length(); i++) {
             char c = argument.charAt(i);
 
-            // Skip the dash character.
-            if (c == '-') continue;
+            // Leading dashes mark the option, inner ones separate words (--http-port).
+            if (c == '-') {
+                if (formatted.length() > 0) formatted.append('_');
+
+                continue;
+            }
 
             // If the character is uppercase, we add an underscore to the formatted string.
             if (Character.isUpperCase(c))

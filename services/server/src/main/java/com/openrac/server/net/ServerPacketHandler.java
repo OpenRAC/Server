@@ -2,6 +2,7 @@ package com.openrac.server.net;
 
 import io.netty.channel.ChannelHandlerContext;
 
+import com.openrac.net.NetworkConstants;
 import com.openrac.net.netty.handlers.PacketHandler;
 import com.openrac.net.packets.Opcodes;
 import com.openrac.net.packets.Packets;
@@ -24,6 +25,9 @@ import com.openrac.utils.logger.Log;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -81,11 +85,13 @@ public class ServerPacketHandler extends PacketHandler {
         // A refused connection never counted against its address.
         if (address != null) ConnectionLimit.close(address);
 
-        // Datagrams naming a closed session are dropped from now on.
-        if (session != null) SessionRegistry.remove(session);
+        // A session that moved to a newer connection has not gone anywhere.
+        if (session != null && session.isOn(ctx.channel())) {
+            // Datagrams naming a closed session are dropped until it comes back.
+            SessionRegistry.remove(session);
 
-        // A link that never said hello holds no party.
-        if (session != null) PartyController.leave(session);
+            PartyController.dropped(session, Clock.now());
+        }
 
         // Without a hello there is only the address to name.
         String who = session == null ? "Connection from " + ctx.channel().remoteAddress() : "Session " + session.getId() + " (" + session.getName() + ")";
@@ -109,6 +115,8 @@ public class ServerPacketHandler extends PacketHandler {
             reject(ctx, "sent " + packet + " before hello");
             return;
         }
+
+        if (session != null) session.touch();
 
         // Over its rate, a packet is dropped and counts as a strike.
         if (!withinLimit(packet)) {
@@ -183,6 +191,7 @@ public class ServerPacketHandler extends PacketHandler {
 
         String version = payload.readString();
         String name = payload.readString().strip();
+        int features = payload.size() > 0 ? payload.readUnsignedByte() : 0; // Older clients send none.
 
         // Blank or oversized fields only come from a broken client.
         if (!isValid(version, Constants.MAX_VERSION_LENGTH) || !isValid(name, Constants.MAX_NAME_LENGTH)) {
@@ -190,7 +199,7 @@ public class ServerPacketHandler extends PacketHandler {
             return;
         }
 
-        session = new Session(ctx.channel(), name);
+        session = new Session(ctx.channel(), name, (features & NetworkConstants.CLIENT_RESUMES) != 0);
 
         Log.info("Session " + session.getId() + " (" + name + ", version " + version + ") from " + ctx.channel().remoteAddress() + ".");
 
@@ -199,7 +208,7 @@ public class ServerPacketHandler extends PacketHandler {
         session.send(new HelloPacket(session.getId()));
 
         // Shipped clients read hello as it was, so UDP comes separately.
-        session.send(new UdpPacket(session.getToken(), Constants.PORT));
+        session.send(new UdpPacket(session.getToken(), Constants.PORT, NetworkConstants.FEATURE_KICK | NetworkConstants.FEATURE_RESUME, session.getResumeToken()));
     }
 
     /**
@@ -221,6 +230,23 @@ public class ServerPacketHandler extends PacketHandler {
             case JOIN -> PartyController.join(session, payload.readString());
             case FIND -> PartyController.find(session);
             case LIST -> PartyController.list(session);
+            case KICK -> PartyController.kick(session, payload.readInt());
+            case HOST_CHANGED -> {
+                boolean decline = payload.readUnsignedByte() != 0;
+                int count = payload.readUnsignedByte();
+                List<Integer> ids = new ArrayList<>();
+
+                for (int i = 0; i < count; i++) ids.add(payload.readInt());
+
+                PartyController.successors(session, decline, ids);
+            }
+            case RESUME -> {
+                Session held = PartyController.resume(session, payload.readString().toUpperCase(Locale.ROOT), payload.readInt(), payload.readLong());
+
+                // A slot given up on, or a token that is not this player's.
+                if (held == null) session.send(new ErrorPacket(Opcodes.Error.RESUME_REFUSED));
+                else session = held;
+            }
             case LEAVE -> {
                 // Leaving nothing is worth telling the client about.
                 if (!PartyController.leave(session)) session.send(new ErrorPacket(Opcodes.Error.NOT_IN_PARTY));

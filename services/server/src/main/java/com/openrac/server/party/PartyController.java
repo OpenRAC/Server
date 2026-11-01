@@ -1,15 +1,25 @@
 package com.openrac.server.party;
 
+import com.openrac.net.NetworkConstants;
 import com.openrac.net.packets.Opcodes;
 import com.openrac.net.packets.model.OutputBuffer;
 import com.openrac.net.packets.out.ErrorPacket;
+import com.openrac.net.packets.out.HelloPacket;
 import com.openrac.net.packets.out.PartyPacket;
+import com.openrac.net.packets.out.UdpPacket;
 import com.openrac.server.Constants;
 import com.openrac.server.Session;
+import com.openrac.server.SessionRegistry;
 import com.openrac.utils.logger.Log;
 
+import io.netty.channel.Channel;
+
+import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -57,8 +67,8 @@ public class PartyController {
         // Players type the code, so case does not matter.
         Party party = parties.get(code.toUpperCase(Locale.ROOT));
 
-        // A mistyped code, or a party whose host already left.
-        if (party == null) {
+        // A mistyped code, a party whose host already left, or one waiting to see if it has one.
+        if (party == null || party.isWaiting()) {
             session.send(new ErrorPacket(Opcodes.Error.PARTY_NOT_FOUND));
             return;
         }
@@ -86,7 +96,10 @@ public class PartyController {
         }
 
         for (Party party : parties.values()) {
-            if (party.isFull()) continue;
+            if (party.isFull() || party.isWaiting()) continue;
+
+            // Finding a match must not hand the host back the player it just removed.
+            if (party.hasKicked(session)) continue;
 
             add(session, party);
             return;
@@ -107,7 +120,7 @@ public class PartyController {
 
         for (Party party : parties.values()) {
             // The list is for finding a party to join, and a full one cannot be joined.
-            if (party.isFull()) continue;
+            if (party.isFull() || party.isWaiting()) continue;
 
             // A session has no use for the party it is already in.
             if (party == session.getParty()) continue;
@@ -162,6 +175,45 @@ public class PartyController {
     }
 
     /**
+     * Removes a member at its host's word: it is told, the others hear it left. The connection
+     * stays, and its code still works, so a kick is not a ban.
+     * @param session The session asking.
+     * @param target The id of the member to remove.
+     */
+
+    public static synchronized void kick(Session session, int target) {
+        Party party = session.getParty();
+
+        if (party == null) {
+            session.send(new ErrorPacket(Opcodes.Error.NOT_IN_PARTY));
+            return;
+        }
+
+        // Only the host has the say.
+        if (!party.isHost(session)) {
+            session.send(new ErrorPacket(Opcodes.Error.NOT_HOST));
+            return;
+        }
+
+        for (Session member : party.getMembers()) {
+            // A host cannot remove itself: leaving is how a party ends.
+            if (member.getId() != target || party.isHost(member)) continue;
+
+            party.remove(member);
+            party.markKicked(member);
+            member.setParty(null);
+
+            member.send(new PartyPacket(Opcodes.Party.KICKED));
+            party.broadcast(new PartyPacket(Opcodes.Party.LEFT, member.getId()));
+
+            Log.info(describe(member) + " was removed from party " + party.getCode() + " by its host.");
+            return;
+        }
+
+        // Left a moment ago, most likely: nothing to do, and nothing worth telling the host.
+    }
+
+    /**
      * Takes the session out of its party. The party ends when its host leaves.
      * @param session The session leaving.
      * @return False when the session was not in a party.
@@ -176,15 +228,9 @@ public class PartyController {
         party.remove(session);
         session.setParty(null);
 
-        // Without the host there is no game left to link to.
+        // The party goes on with the next host, if there is one.
         if (party.isHost(session)) {
-            parties.remove(party.getCode());
-
-            for (Session member : party.getMembers()) member.setParty(null);
-
-            party.broadcast(new PartyPacket(Opcodes.Party.END));
-
-            Log.info("Party " + party.getCode() + " ended: its host " + describe(session) + " left.");
+            takeOver(party);
             return true;
         }
 
@@ -192,6 +238,154 @@ public class PartyController {
 
         Log.info(describe(session) + " left party " + party.getCode() + ".");
         return true;
+    }
+
+    /**
+     * A connection dropped. A client that comes back keeps its slot, and the others are told; any
+     * other leaves as it always did.
+     * @param session The session whose connection went.
+     * @param now The time of the drop, as Clock.now().
+     */
+
+    public static synchronized void dropped(Session session, long now) {
+        Party party = session.getParty();
+
+        // In no party, or one with no way back.
+        if (party == null || !session.resumes()) {
+            leave(session);
+            return;
+        }
+
+        session.markAway(now);
+        party.broadcast(new PartyPacket(session.getId(), false));
+
+        Log.info(describe(session) + " dropped out of party " + party.getCode() + "; its slot waits.");
+    }
+
+    /**
+     * The next host takes over, or, with nobody who can, the party ends.
+     * @param party A party whose host is gone or declined.
+     */
+
+    private static void takeOver(Party party) {
+        Session next = party.nextHost();
+
+        if (next != null) {
+            int epoch = party.changeHost(next);
+
+            party.broadcast(new PartyPacket(next.getId(), epoch));
+
+            Log.info(describe(next) + " took over party " + party.getCode() + " (epoch " + epoch + ").");
+            return;
+        }
+
+        parties.remove(party.getCode());
+
+        // Without a host there is no game left to link to.
+        for (Session member : party.getMembers()) member.setParty(null);
+
+        party.broadcast(new PartyPacket(Opcodes.Party.END));
+
+        Log.info("Party " + party.getCode() + " ended: nobody could host it.");
+    }
+
+    /**
+     * The host's word on who follows it, or a new host saying it cannot.
+     * @param session The session asking.
+     * @param decline Whether it declines.
+     * @param ids The ones that may follow, the first choice first.
+     */
+
+    public static synchronized void successors(Session session, boolean decline, List<Integer> ids) {
+        Party party = session.getParty();
+
+        if (party == null) {
+            session.send(new ErrorPacket(Opcodes.Error.NOT_IN_PARTY));
+            return;
+        }
+
+        // Only the host has the say.
+        if (!party.isHost(session)) {
+            session.send(new ErrorPacket(Opcodes.Error.NOT_HOST));
+            return;
+        }
+
+        if (!decline) {
+            party.setSuccessors(ids);
+            return;
+        }
+
+        party.decline(session);
+        takeOver(party);
+    }
+
+    /**
+     * Takes a session back: the connection that proved it moves onto the old session, which keeps
+     * its id, its party and its slot. The session the new connection made for itself is dropped.
+     * @param fresh The session of the connection asking.
+     * @param code The party's join code.
+     * @param id The id of the session to take back.
+     * @param token That session's resume token.
+     * @return The session taken back, or null when it was refused.
+     */
+
+    public static synchronized Session resume(Session fresh, String code, int id, long token) {
+        Party party = parties.get(code);
+
+        // A new connection is in no party; the party may have ended since.
+        if (fresh.getParty() != null || party == null) return null;
+
+        Session held = null;
+
+        for (Session member : party.getMembers()) if (member.getId() == id) held = member;
+
+        // Compared whole: the token is all that stands between a stranger and the slot.
+        byte[] asked = ByteBuffer.allocate(Long.BYTES).putLong(token).array();
+
+        if (held == null || !MessageDigest.isEqual(asked, ByteBuffer.allocate(Long.BYTES).putLong(held.getResumeToken()).array())) return null;
+
+        // Back before the server noticed it had gone, and the old connection is what is stale.
+        Channel stale = held.rebind(fresh.getChannel());
+
+        stale.close();
+
+        SessionRegistry.remove(fresh);
+        SessionRegistry.add(held);
+
+        // The connection now knows this session by its old id.
+        held.send(new HelloPacket(held.getId()));
+        held.send(new UdpPacket(held.getToken(), Constants.PORT, NetworkConstants.FEATURE_KICK | NetworkConstants.FEATURE_RESUME, held.getResumeToken()));
+        held.send(new PartyPacket(Opcodes.Party.INFO, party.serialize()));
+
+        for (Session member : party.getMembers()) if (member != held) member.send(new PartyPacket(held.getId(), true));
+
+        Log.info(describe(held) + " came back to party " + party.getCode() + ".");
+
+        return held;
+    }
+
+    /**
+     * Once a second: closes clients gone quiet, and gives up on slots whose time is out.
+     * @param now The time, as Clock.now().
+     */
+
+    public static synchronized void sweep(long now) {
+        for (Party party : new ArrayList<>(parties.values())) {
+            // A host that stays gone keeps its slot, as a member like the others.
+            if (party.isWaiting() && now - party.getHost().getAwayAt() >= Constants.HOST_GRACE_SECONDS * 1000L) takeOver(party);
+
+            for (Session member : party.getMembers()) {
+                // Only a client that comes back keeps saying something while it stands still.
+                if (member.resumes() && !member.isAway() && now - member.getHeardAt() >= Constants.PARTY_IDLE_SECONDS * 1000L) {
+                    Log.info(describe(member) + " went quiet.");
+                    member.close();
+                }
+
+                // A host's slot is for the party to wait on: the wait runs out first.
+                if (member.isAway() && !party.isHost(member) && now - member.getAwayAt() >= Constants.RESUME_SECONDS * 1000L) leave(member);
+            }
+
+        }
     }
 
     /**

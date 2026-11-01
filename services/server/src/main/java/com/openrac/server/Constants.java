@@ -13,6 +13,7 @@ public class Constants {
 
     public static final String HOST = Environment.getString("HOST", "0.0.0.0");
     public static final int PORT = Environment.getInt("PORT", 7770);
+    public static final int HTTP_PORT = Environment.getInt("HTTP_PORT", 7771); // The mod set store.
 
     public static final int MAX_VERSION_LENGTH = 32;
     public static final int MAX_NAME_LENGTH = 32;
@@ -40,6 +41,25 @@ public class Constants {
     public static final int UDP_TIMEOUT_SECONDS = Environment.getInt("UDP_TIMEOUT_SECONDS", 15); // Quiet UDP falls back to TCP.
     public static final int HELLO_TIMEOUT_SECONDS = Environment.getInt("HELLO_TIMEOUT_SECONDS", 10); // Hello within this, or closed.
 
+    // A dropped player keeps its slot this long; a client that has not been heard from for the
+    // idle time is taken for dropped, as a machine that dies closes nothing.
+    public static final int RESUME_SECONDS = Environment.getInt("RESUME_SECONDS", 120);
+    public static final int PARTY_IDLE_SECONDS = Environment.getInt("PARTY_IDLE_SECONDS", 5);
+    public static final int HOST_GRACE_SECONDS = Environment.getInt("HOST_GRACE_SECONDS", 15); // Then the next host takes over.
+
+    // Mod sets behind short codes: a request's size, and what the store keeps.
+    public static final int MODSET_MAX_BODY_BYTES = Environment.getInt("MODSET_MAX_BODY_BYTES", 16_384); // Compressed.
+    public static final int MODSET_MAX_JSON_BYTES = Environment.getInt("MODSET_MAX_JSON_BYTES", 65_536); // Inflated.
+    public static final int MODSET_MAX_MODS = 40;
+    public static final int MODSET_CAPACITY = Environment.getInt("MODSET_CAPACITY", 50_000);
+    public static final int MODSET_TTL_DAYS = Environment.getInt("MODSET_TTL_DAYS", 30); // Refreshed by each read.
+    public static final int MODSET_SAVE_MINUTES = Environment.getInt("MODSET_SAVE_MINUTES", 5);
+    public static final String MODSET_FILE = Environment.getString("MODSET_FILE", "data/modsets.bin");
+    public static final int MODSET_PUTS_PER_MINUTE = Environment.getInt("MODSET_PUTS_PER_MINUTE", 10); // Per address.
+    public static final int MODSET_GETS_PER_MINUTE = Environment.getInt("MODSET_GETS_PER_MINUTE", 60); // Per address.
+    public static final int HTTP_TIMEOUT_SECONDS = Environment.getInt("HTTP_TIMEOUT_SECONDS", 10); // Whole request, or closed.
+
+    public static final int MODSET_CODE_LENGTH = 8; // 40 bits of the alphabet below.
     public static final int CODE_LENGTH = 6;
     public static final String CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // No 0, O, 1 or I, which read alike.
 }
