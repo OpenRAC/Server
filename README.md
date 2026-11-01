@@ -119,7 +119,8 @@ Names and versions are 1 to 32 characters, chat messages 1 to 256. Parties hold 
 | 7 | `FIND` | client → server | none; joins the oldest party with room, else hosts a new one; answered with `INFO`; the party it creates has no description |
 | 8 | `LIST` | client → server | none; allowed in or out of a party, answered with `LIST` |
 | | | server → client | count byte (at most 32), then per party: code string, host name string, member count byte, max party size byte, description string |
-| 9 | `HOST_CHANGED` | | reserved for host migration, nothing sends it yet |
+| 9 | `HOST_CHANGED` | client → server | decline byte, count byte, then id int per member; from the host only (else `NOT_HOST`). 0: these may follow it, the first choice first, replacing the last list. 1: a new host says it cannot, and the next one is asked |
+| | | server → members | new host id int, epoch int (one more at each change) |
 | 10 | `RESUME` | client → server | party code string, session id int, resume token long; asked after `HELLO` on a new connection (below) |
 | | | server → members | id int, byte: 0 its connection dropped and its slot waits, 1 it came back |
 | 11 | `KICK` | client → server | member id int; from the host only (else `NOT_HOST`). The member gets `KICKED`, the others `LEFT`. Its connection stays and its code still works, but `FIND` no longer puts it in that party. An id that is not a member's does nothing |
@@ -144,6 +145,13 @@ client says `HELLO`, then `RESUME`: refused with `RESUME_REFUSED`, or answered a
 nothing. In a party, a client that can come back and has been silent for `PARTY_IDLE_SECONDS` (5) on
 both TCP and UDP is closed, since a machine that dies closes nothing. A client without that bit
 leaves when its connection goes, as ever.
+
+A host's connection dropping makes the party wait for `HOST_GRACE_SECONDS` (15): it can come back
+as above, nobody can join or find the party meanwhile, and nothing is forwarded to it. Then the first
+of the host's last `HOST_CHANGED` list who is there hosts, everyone is told with `HOST_CHANGED`, and
+the old host stays as a member whose slot waits out the rest of its time: if it comes back, `INFO`
+tells it the host and epoch of the party it finds. A host that leaves on purpose is followed at once.
+A party whose host named nobody, or with nobody left to follow, ends with `END`.
 
 `DATA` routing: from a member, the server sends it to the host and ignores the target. From the
 host, target 0 sends it to every other member, and a session id sends it to that member only.

@@ -19,7 +19,7 @@ public final class Opcodes {
         END, // Server tells members the host left.
         FIND, // Client joins any party with room, or hosts a new one.
         LIST, // Client asks for the parties it could join; the server answers with them.
-        HOST_CHANGED, // Reserved for host migration; nothing sends it yet.
+        HOST_CHANGED, // Host names who follows it, a new host declines; the server tells who hosts now.
         RESUME, // Client rejoins after a drop; the server tells members who went away and came back.
         KICK, // The host asks the server to remove a member.
         KICKED; // Server tells a member the host removed it.

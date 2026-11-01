@@ -45,6 +45,7 @@ public class Constants {
     // idle time is taken for dropped, as a machine that dies closes nothing.
     public static final int RESUME_SECONDS = Environment.getInt("RESUME_SECONDS", 120);
     public static final int PARTY_IDLE_SECONDS = Environment.getInt("PARTY_IDLE_SECONDS", 5);
+    public static final int HOST_GRACE_SECONDS = Environment.getInt("HOST_GRACE_SECONDS", 15); // Then the next host takes over.
 
     // Mod sets behind short codes: a request's size, and what the store keeps.
     public static final int MODSET_MAX_BODY_BYTES = Environment.getInt("MODSET_MAX_BODY_BYTES", 16_384); // Compressed.

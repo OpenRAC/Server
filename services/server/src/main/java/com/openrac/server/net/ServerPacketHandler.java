@@ -25,6 +25,8 @@ import com.openrac.utils.logger.Log;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
@@ -229,6 +231,15 @@ public class ServerPacketHandler extends PacketHandler {
             case FIND -> PartyController.find(session);
             case LIST -> PartyController.list(session);
             case KICK -> PartyController.kick(session, payload.readInt());
+            case HOST_CHANGED -> {
+                boolean decline = payload.readUnsignedByte() != 0;
+                int count = payload.readUnsignedByte();
+                List<Integer> ids = new ArrayList<>();
+
+                for (int i = 0; i < count; i++) ids.add(payload.readInt());
+
+                PartyController.successors(session, decline, ids);
+            }
             case RESUME -> {
                 Session held = PartyController.resume(session, payload.readString().toUpperCase(Locale.ROOT), payload.readInt(), payload.readLong());
 

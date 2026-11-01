@@ -44,6 +44,19 @@ public class PartyPacket extends OutgoingPacket {
     }
 
     /**
+     * HOST_CHANGED from the server: who hosts now.
+     * @param sessionId The new host.
+     * @param epoch How many times the party's host has changed.
+     */
+
+    public PartyPacket(int sessionId, int epoch) {
+        this(Opcodes.Party.HOST_CHANGED);
+
+        writeInt(sessionId);
+        writeInt(epoch);
+    }
+
+    /**
      * RESUME from the server: a member's connection went away, or it came back.
      * @param sessionId The member.
      * @param back Whether it came back.
