@@ -103,7 +103,7 @@ Names and versions are 1 to 32 characters, chat messages 1 to 256. Parties hold 
 | 4 | `ERROR` | server → client | reason opcode byte |
 | 5 | `TIME` | client → server | client time long (ms) |
 | | | server → client | the client time echoed, server time long (ms since the server started) |
-| 6 | `UDP` | server → client | UDP token long, UDP port int; sent right after the `HELLO` answer |
+| 6 | `UDP` | server → client | UDP token long, UDP port int, feature bits byte; sent right after the `HELLO` answer |
 
 `PARTY` opcodes:
 
@@ -119,13 +119,21 @@ Names and versions are 1 to 32 characters, chat messages 1 to 256. Parties hold 
 | 7 | `FIND` | client → server | none; joins the oldest party with room, else hosts a new one; answered with `INFO`; the party it creates has no description |
 | 8 | `LIST` | client → server | none; allowed in or out of a party, answered with `LIST` |
 | | | server → client | count byte (at most 32), then per party: code string, host name string, member count byte, max party size byte, description string |
+| 9 | `HOST_CHANGED` | | reserved for host migration, nothing sends it yet |
+| 10 | `RESUME` | | reserved for rejoining after a drop, nothing sends it yet |
+| 11 | `KICK` | client → server | member id int; from the host only (else `NOT_HOST`). The member gets `KICKED`, the others `LEFT`. Its connection stays and its code still works, but `FIND` no longer puts it in that party. An id that is not a member's does nothing |
+| 12 | `KICKED` | server → member | none; the host removed it from the party |
 
 The description is sanitised on the server: only printable ASCII (0x20 to 0x7E) is kept, the ends are
 trimmed and it is cut to 48 characters. `LIST` names the parties with room (members below the party
 size), oldest first, without the requester's own party; created and match-found parties both appear.
 It shares the party-request rate, which allows a request every 3 seconds.
 
-`ERROR` reasons: 0 `PARTY_NOT_FOUND`, 1 `PARTY_FULL`, 2 `ALREADY_IN_PARTY`, 3 `NOT_IN_PARTY`.
+`ERROR` reasons: 0 `PARTY_NOT_FOUND`, 1 `PARTY_FULL`, 2 `ALREADY_IN_PARTY`, 3 `NOT_IN_PARTY`,
+4 `NOT_HOST`.
+
+`UDP`'s feature bits say which requests this server takes, since an unknown one closes the
+connection: bit 0 (1) `KICK`. A client from before them stops reading at the port.
 
 `DATA` routing: from a member, the server sends it to the host and ignores the target. From the
 host, target 0 sends it to every other member, and a session id sends it to that member only.

@@ -2,6 +2,7 @@ package com.openrac.server.net;
 
 import io.netty.channel.ChannelHandlerContext;
 
+import com.openrac.net.NetworkConstants;
 import com.openrac.net.netty.handlers.PacketHandler;
 import com.openrac.net.packets.Opcodes;
 import com.openrac.net.packets.Packets;
@@ -199,7 +200,7 @@ public class ServerPacketHandler extends PacketHandler {
         session.send(new HelloPacket(session.getId()));
 
         // Shipped clients read hello as it was, so UDP comes separately.
-        session.send(new UdpPacket(session.getToken(), Constants.PORT));
+        session.send(new UdpPacket(session.getToken(), Constants.PORT, NetworkConstants.FEATURE_KICK));
     }
 
     /**
@@ -221,6 +222,7 @@ public class ServerPacketHandler extends PacketHandler {
             case JOIN -> PartyController.join(session, payload.readString());
             case FIND -> PartyController.find(session);
             case LIST -> PartyController.list(session);
+            case KICK -> PartyController.kick(session, payload.readInt());
             case LEAVE -> {
                 // Leaving nothing is worth telling the client about.
                 if (!PartyController.leave(session)) session.send(new ErrorPacket(Opcodes.Error.NOT_IN_PARTY));

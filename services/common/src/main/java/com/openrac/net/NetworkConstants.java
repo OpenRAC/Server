@@ -11,4 +11,6 @@ public class NetworkConstants {
     public static final int MAX_DATAGRAM_LENGTH = 1_200; // Longest datagram either way, under common path MTUs.
 
     public static final int BROADCAST = 0; // Data target for every member, as session ids start at 1.
+
+    public static final int FEATURE_KICK = 1; // UDP offer's feature bit: the server takes KICK.
 }

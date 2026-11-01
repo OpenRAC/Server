@@ -252,12 +252,13 @@ public class PacketCodecTests {
     class UdpTests {
 
         @Test
-        @DisplayName("A UDP offer carries the token and the port")
+        @DisplayName("A UDP offer carries the token, the port and the feature bits")
         public void testUdpOffer() {
-            InputBuffer payload = roundTrip(new UdpPacket(-0x1234_5678_9ABC_DEF0L, 7770), Packets.UDP);
+            InputBuffer payload = roundTrip(new UdpPacket(-0x1234_5678_9ABC_DEF0L, 7770, 1), Packets.UDP);
 
             Assertions.assertEquals(-0x1234_5678_9ABC_DEF0L, payload.readLong());
             Assertions.assertEquals(7770, payload.readInt());
+            Assertions.assertEquals(1, payload.readUnsignedByte());
             Assertions.assertEquals(0, payload.size());
         }
     }

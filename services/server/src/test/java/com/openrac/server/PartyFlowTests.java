@@ -293,6 +293,114 @@ public class PartyFlowTests {
     }
 
     @Nested
+    @DisplayName("Kick Tests")
+    class KickTests {
+
+        @Test
+        @DisplayName("The server says it takes a kick")
+        public void testFeatureBit() {
+            Assertions.assertEquals(NetworkConstants.FEATURE_KICK, connect("Ratchet").features & NetworkConstants.FEATURE_KICK);
+        }
+
+        @Test
+        @DisplayName("Opcodes keep their numbers")
+        public void testOrdinals() {
+            Assertions.assertEquals(9, Opcodes.Party.HOST_CHANGED.ordinal());
+            Assertions.assertEquals(10, Opcodes.Party.RESUME.ordinal());
+            Assertions.assertEquals(11, Opcodes.Party.KICK.ordinal());
+            Assertions.assertEquals(12, Opcodes.Party.KICKED.ordinal());
+            Assertions.assertEquals(4, Opcodes.Error.NOT_HOST.ordinal());
+        }
+
+        @Test
+        @DisplayName("The host removes a member: it is told, the others hear it left, it stays connected")
+        public void testKick() {
+            Client host = connect("Ratchet");
+            Client first = connect("Clank");
+            Client second = connect("Qwark");
+            String code = host.create();
+
+            first.join(code, 2);
+            host.receiveParty(Opcodes.Party.JOINED);
+            second.join(code, 3);
+            host.receiveParty(Opcodes.Party.JOINED);
+            first.receiveParty(Opcodes.Party.JOINED);
+
+            host.send(new PartyPacket(Opcodes.Party.KICK, first.id));
+
+            first.receiveParty(Opcodes.Party.KICKED);
+            Assertions.assertEquals(first.id, host.receiveParty(Opcodes.Party.LEFT).readInt());
+            Assertions.assertEquals(first.id, second.receiveParty(Opcodes.Party.LEFT).readInt());
+
+            first.assertSilent();
+            Assertions.assertTrue(first.channel.isActive());
+
+            // Out of the party, its data goes nowhere and its code still works: a kick is no ban.
+            first.send(new PartyPacket(Opcodes.Party.LEAVE));
+            Assertions.assertEquals(Opcodes.Error.NOT_IN_PARTY, first.receiveError());
+
+            first.join(code, 3);
+            host.receiveParty(Opcodes.Party.JOINED);
+            second.receiveParty(Opcodes.Party.JOINED);
+        }
+
+        @Test
+        @DisplayName("Only the host removes, nobody removes the host, and a stranger's id does nothing")
+        public void testRefusals() {
+            Client host = connect("Ratchet");
+            Client first = connect("Clank");
+            Client second = connect("Qwark");
+            Client outsider = connect("Skid");
+            String code = host.create();
+
+            first.join(code, 2);
+            host.receiveParty(Opcodes.Party.JOINED);
+            second.join(code, 3);
+            host.receiveParty(Opcodes.Party.JOINED);
+            first.receiveParty(Opcodes.Party.JOINED);
+
+            first.send(new PartyPacket(Opcodes.Party.KICK, second.id));
+            Assertions.assertEquals(Opcodes.Error.NOT_HOST, first.receiveError());
+
+            first.send(new PartyPacket(Opcodes.Party.KICK, host.id));
+            Assertions.assertEquals(Opcodes.Error.NOT_HOST, first.receiveError());
+
+            outsider.send(new PartyPacket(Opcodes.Party.KICK, first.id));
+            Assertions.assertEquals(Opcodes.Error.NOT_IN_PARTY, outsider.receiveError());
+
+            // The host itself, and an id that is no member's: left alone, in silence.
+            host.send(new PartyPacket(Opcodes.Party.KICK, host.id));
+            host.send(new PartyPacket(Opcodes.Party.KICK, outsider.id));
+
+            host.assertSilent();
+            first.assertSilent();
+            second.assertSilent();
+            outsider.assertSilent();
+        }
+
+        @Test
+        @DisplayName("Match finding does not put a removed player back in that party")
+        public void testFindSkipsTheKicked() {
+            Client host = connect("Ratchet");
+            Client member = connect("Clank");
+            String code = host.create();
+
+            member.join(code, 2);
+            host.receiveParty(Opcodes.Party.JOINED);
+            host.send(new PartyPacket(Opcodes.Party.KICK, member.id));
+            member.receiveParty(Opcodes.Party.KICKED);
+            host.receiveParty(Opcodes.Party.LEFT);
+
+            member.send(new PartyPacket(Opcodes.Party.FIND));
+
+            InputBuffer info = member.receiveParty(Opcodes.Party.INFO);
+
+            Assertions.assertNotEquals(code, info.readString());
+            host.assertSilent();
+        }
+    }
+
+    @Nested
     @DisplayName("Description Tests")
     class DescriptionTests {
 

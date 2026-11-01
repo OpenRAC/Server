@@ -6,7 +6,9 @@ import com.openrac.net.packets.model.OutputBuffer;
 import com.openrac.server.Constants;
 import com.openrac.server.Session;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
@@ -22,6 +24,7 @@ public class Party {
     private final String description;
 
     private final List<Session> members = new CopyOnWriteArrayList<>();
+    private final Set<Integer> kicked = new HashSet<>(); // Only touched under the controller's lock.
 
     /**
      * Creates a party with its host as the first member.
@@ -97,6 +100,25 @@ public class Party {
 
     void remove(Session session) {
         members.remove(session);
+    }
+
+    /**
+     * Keeps a removed member out of match finding. Called under the controller's lock.
+     * @param session The session the host removed.
+     */
+
+    void markKicked(Session session) {
+        kicked.add(session.getId());
+    }
+
+    /**
+     * Called under the controller's lock.
+     * @param session A session to check.
+     * @return Whether the host removed the session.
+     */
+
+    boolean hasKicked(Session session) {
+        return kicked.contains(session.getId());
     }
 
     /**

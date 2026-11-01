@@ -24,6 +24,7 @@ class Client {
 
     int id;
     long token; // The UDP token the server sent after hello.
+    int features; // The bits of what the server said it takes.
 
     /**
      * Builds the server's pipeline on the embedded channel.
@@ -46,6 +47,7 @@ class Client {
 
         token = udp.readLong();
         Assertions.assertEquals(Constants.PORT, udp.readInt());
+        features = udp.readUnsignedByte();
     }
 
     /**

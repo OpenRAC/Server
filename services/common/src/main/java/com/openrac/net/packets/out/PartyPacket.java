@@ -11,7 +11,7 @@ import com.openrac.net.packets.model.OutputBuffer;
 
 public class PartyPacket extends OutgoingPacket {
     /**
-     * A party opcode with no payload: CREATE, LEAVE or END.
+     * A party opcode with no payload: CREATE, LEAVE, END or KICKED.
      * @param opcode The party opcode.
      */
 
@@ -32,7 +32,7 @@ public class PartyPacket extends OutgoingPacket {
     }
 
     /**
-     * A party opcode carrying one session id: LEFT.
+     * A party opcode carrying one session id: LEFT or KICK.
      * @param opcode The party opcode.
      * @param sessionId The session the notice is about.
      */

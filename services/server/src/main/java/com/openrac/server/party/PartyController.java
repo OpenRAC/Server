@@ -88,6 +88,9 @@ public class PartyController {
         for (Party party : parties.values()) {
             if (party.isFull()) continue;
 
+            // Finding a match must not hand the host back the player it just removed.
+            if (party.hasKicked(session)) continue;
+
             add(session, party);
             return;
         }
@@ -159,6 +162,45 @@ public class PartyController {
         Log.info(describe(session) + " joined party " + party.getCode() + " (" + party.getMembers().size() + "/" + Constants.MAX_PARTY_SIZE + ").");
 
         session.send(new PartyPacket(Opcodes.Party.INFO, party.serialize()));
+    }
+
+    /**
+     * Removes a member at its host's word: it is told, the others hear it left. The connection
+     * stays, and its code still works, so a kick is not a ban.
+     * @param session The session asking.
+     * @param target The id of the member to remove.
+     */
+
+    public static synchronized void kick(Session session, int target) {
+        Party party = session.getParty();
+
+        if (party == null) {
+            session.send(new ErrorPacket(Opcodes.Error.NOT_IN_PARTY));
+            return;
+        }
+
+        // Only the host has the say.
+        if (!party.isHost(session)) {
+            session.send(new ErrorPacket(Opcodes.Error.NOT_HOST));
+            return;
+        }
+
+        for (Session member : party.getMembers()) {
+            // A host cannot remove itself: leaving is how a party ends.
+            if (member.getId() != target || party.isHost(member)) continue;
+
+            party.remove(member);
+            party.markKicked(member);
+            member.setParty(null);
+
+            member.send(new PartyPacket(Opcodes.Party.KICKED));
+            party.broadcast(new PartyPacket(Opcodes.Party.LEFT, member.getId()));
+
+            Log.info(describe(member) + " was removed from party " + party.getCode() + " by its host.");
+            return;
+        }
+
+        // Left a moment ago, most likely: nothing to do, and nothing worth telling the host.
     }
 
     /**
