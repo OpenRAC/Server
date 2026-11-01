@@ -168,7 +168,8 @@ public class ModSetFlowTests {
         @Test
         @DisplayName("A small body that expands too far is refused")
         public void testBomb() {
-            String bomb = set().replace("Ada's set", " ".repeat(Constants.MODSET_MAX_JSON_BYTES + 1));
+            // Valid JSON all the way: only the size refuses it.
+            String bomb = set() + " ".repeat(Constants.MODSET_MAX_JSON_BYTES + 1);
 
             Assertions.assertTrue(deflate(bomb).length < Constants.MODSET_MAX_BODY_BYTES);
             Assertions.assertThrows(InvalidModSetException.class, () -> ModSetValidator.check(deflate(bomb)));
