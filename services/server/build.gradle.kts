@@ -10,6 +10,8 @@ application {
 
 dependencies {
     implementation(project(":common"))
+    implementation(libs.netty.codec.http)
+    implementation(libs.gson)
 }
 
 tasks {

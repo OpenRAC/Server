@@ -11,14 +11,23 @@ import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.util.concurrent.Future;
 
+import com.openrac.server.http.HttpChannelInitializer;
+import com.openrac.server.http.ModSetStore;
 import com.openrac.server.net.ServerChannelInitializer;
 import com.openrac.server.net.ServerDatagramHandler;
 import com.openrac.system.Environment;
 import com.openrac.utils.logger.Log;
 
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+
 /**
  * The entry point. It binds the TCP and UDP port, accepts game connections on Netty's event loops
- * and shuts them down cleanly when the process is stopped.
+ * and shuts them down cleanly when the process is stopped. A second TCP port takes HTTP requests
+ * for the launcher's mod sets.
  */
 
 public class Server {
@@ -28,6 +37,19 @@ public class Server {
 
     private Channel channel;
     private Channel udpChannel; // The one datagram socket every session shares.
+    private Channel httpChannel; // The launcher's mod sets.
+
+    private final ModSetStore modSets = new ModSetStore();
+    private final Path modSetFile = Path.of(Constants.MODSET_FILE);
+
+    // Saving writes a file, which must not hold up an event loop.
+    private final ScheduledExecutorService saver = Executors.newSingleThreadScheduledExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "mod-set-saver");
+
+        thread.setDaemon(true);
+
+        return thread;
+    });
 
     /**
      * Loads the environment, then starts the server on its host and port.
@@ -45,6 +67,7 @@ public class Server {
         Server server = new Server();
 
         server.start(Constants.HOST, Constants.PORT);
+        server.startModSets(Constants.HOST, Constants.HTTP_PORT);
 
         Runtime.getRuntime().addShutdownHook(new Thread(server::stop, "shutdown"));
     }
@@ -82,6 +105,46 @@ public class Server {
     }
 
     /**
+     * Loads the stored mod sets, binds the HTTP port and saves the sets now and then.
+     * @param host The address to listen on.
+     * @param port The HTTP port to listen on.
+     * @throws InterruptedException If binding the port is interrupted.
+     */
+
+    public void startModSets(String host, int port) throws InterruptedException {
+        try {
+            modSets.load(modSetFile);
+        } catch (IOException exception) {
+            // Codes lost at worst; the launcher then asks for a new one.
+            Log.error("Could not read " + modSetFile + ", starting empty: " + exception.getMessage() + ".");
+        }
+
+        httpChannel = new ServerBootstrap()
+                .group(bossGroup, workerGroup)
+                .channel(NioServerSocketChannel.class)
+                .childHandler(new HttpChannelInitializer(modSets))
+                .bind(host, port)
+                .sync()
+                .channel();
+
+        saver.scheduleWithFixedDelay(this::saveModSets, Constants.MODSET_SAVE_MINUTES, Constants.MODSET_SAVE_MINUTES, TimeUnit.MINUTES);
+
+        Log.notice("Mod sets are on " + host + ":" + port + " (HTTP), " + modSets.getSize() + " stored.");
+    }
+
+    /**
+     * Writes the mod sets to their file, so that a restart keeps the codes.
+     */
+
+    private void saveModSets() {
+        try {
+            modSets.save(modSetFile);
+        } catch (IOException exception) {
+            Log.error("Could not write " + modSetFile + ": " + exception.getMessage() + ".");
+        }
+    }
+
+    /**
      * Closes the listening channel and shuts the event loops down gracefully.
      */
 
@@ -91,6 +154,14 @@ public class Server {
         // A failed bind leaves no channel to close.
         if (channel != null) channel.close().syncUninterruptibly();
         if (udpChannel != null) udpChannel.close().syncUninterruptibly();
+
+        // Without the side-port there is nothing new to save.
+        if (httpChannel != null) {
+            httpChannel.close().syncUninterruptibly();
+            saveModSets();
+        }
+
+        saver.shutdownNow();
 
         // Both quiet periods run at once before either is awaited.
         Future<?> boss = bossGroup.shutdownGracefully();

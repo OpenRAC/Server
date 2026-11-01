@@ -11,3 +11,10 @@ services:
     ports:
       - "7770:7770/tcp"
       - "7770:7770/udp"
+      - "7771:7771/tcp"
+    volumes:
+      - modsets:/app/data
+
+volumes:
+  # The launcher's mod sets, kept across rebuilds.
+  modsets:

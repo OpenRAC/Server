@@ -24,7 +24,7 @@ Java 25 is downloaded by Gradle if it is not installed.
 ```sh
 ./gradlew build                          # compile and run the tests
 ./gradlew :server:run                    # listen on 0.0.0.0:7770
-./gradlew :server:run --args="--port 9000"
+./gradlew :server:run --args="--port 9000 --http-port 9001"
 ```
 
 For a deployment, build the one-jar server and run it with the script:
@@ -42,7 +42,7 @@ The image builds the server with the JDK and runs it on the JRE alone, as a non-
 Docker is needed: no Java or Gradle on the host.
 
 ```sh
-docker compose up -d                     # build and start it on port 7770 (TCP and UDP)
+docker compose up -d                     # build and start it: 7770 (TCP and UDP), 7771 (TCP)
 docker compose logs -f                   # follow the log
 docker compose down                      # stop it
 ```
@@ -51,10 +51,12 @@ Or without Compose:
 
 ```sh
 docker build -t openrac-server .
-docker run -d --name openrac-server -p 7770:7770/tcp -p 7770:7770/udp openrac-server
+docker run -d --name openrac-server -p 7770:7770/tcp -p 7770:7770/udp -p 7771:7771/tcp \
+    -v openrac-modsets:/app/data openrac-server
 ```
 
-Both TCP and UDP must be published: game state uses UDP where it gets through. A `.env` beside
+Both TCP and UDP must be published: game state uses UDP where it gets through. Port 7771 serves the
+launcher's mod sets, and the `/app/data` volume keeps them across rebuilds. A `.env` beside
 `compose.yaml` overrides `.env.defaults` (as do `-e KEY=value` and trailing `--key value`
 arguments with `docker run`). To listen on another port, change the published one
 (`-p 9000:7770/tcp -p 9000:7770/udp`) rather than `PORT`, which is the port inside the container.
@@ -161,6 +163,30 @@ Datagrams have no length prefix. Integers are big-endian.
 |---|---|---|
 | 0 | `BIND` | client → server: none |
 | 1 | `STATE` | client → server: target id int, opaque bytes to the end; server → client: sender id int, opaque bytes |
+
+## Mod sets
+
+A small HTTP side-port (`HTTP_PORT`, 7771, TCP) stores the launcher's mod sets behind short codes:
+what friends type to get the same mods at the same versions. It has nothing to do with game traffic
+and holds only public metadata. No login: a set names catalogue mods and their hashes, and the
+launcher checks everything again and shows it to the player before anything changes.
+
+| Route | Body | Answer |
+|---|---|---|
+| `PUT /v1/modsets` | the set, zlib-compressed JSON | `200` `{"code":"K7M29QXR"}`; `400` bad set; `413` too large; `429` over the rate |
+| `GET /v1/modsets/<CODE>` | none | `200` the compressed set; `404` unknown or expired; `429` over the rate |
+
+- **Codes.** 8 random characters of the party alphabet (40 bits), any case, with or without a dash.
+  The same set gets the same code: the hash leaves out only its `created` date.
+- **Life.** 30 days from the last read (`MODSET_TTL_DAYS`), so a party's code stays alive. Past 50,000
+  sets (`MODSET_CAPACITY`) the set read longest ago goes.
+- **Checks.** At most 16 KB compressed, 64 KB inflated and 40 mods in each list. The JSON is parsed
+  strictly and may hold only the format's keys. `source.url` must be a `https://github.com/` repository,
+  and no other value may hold an address, so the store cannot be used to host anything else.
+- **Rates.** Per address: 10 stores and 60 fetches a minute, with the connection limit above. A
+  connection serves one request and has 10 seconds. Behind a proxy every player shares its address.
+- **Saved.** To `MODSET_FILE` every `MODSET_SAVE_MINUTES` and at shutdown, so a restart keeps the codes.
+  A file that cannot be read is logged and the store starts empty; its codes then answer `404`.
 
 ## License
 
