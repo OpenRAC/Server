@@ -22,6 +22,7 @@ public class Party {
     private final String code;
     private volatile Session host; // Read from other members' threads, written under the party lock.
     private final String description;
+    private final String family; // The host's game family: only its own family sees or joins it.
     private int epoch; // One more at each change of host.
 
     private final List<Session> members = new CopyOnWriteArrayList<>();
@@ -34,12 +35,14 @@ public class Party {
      * @param code The join code.
      * @param host The session that created the party.
      * @param description The sanitised text shown in party lists, empty for none.
+     * @param family The host's game family.
      */
 
-    public Party(String code, Session host, String description) {
+    public Party(String code, Session host, String description, String family) {
         this.code = code;
         this.host = host;
         this.description = description;
+        this.family = family;
 
         members.add(host);
     }
@@ -212,6 +215,14 @@ public class Party {
 
     public String getDescription() {
         return description;
+    }
+
+    /**
+     * @return The host's game family, which every member plays.
+     */
+
+    public String getFamily() {
+        return family;
     }
 
     /**

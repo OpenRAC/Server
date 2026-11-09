@@ -224,12 +224,27 @@ public class ServerPacketHandler extends PacketHandler {
             case CREATE -> {
                 // Clients from before descriptions send an empty body.
                 String description = payload.size() > 0 ? sanitizeDescription(payload.readString()) : "";
+                String family = readFamily(ctx, payload);
 
-                PartyController.create(session, description);
+                if (family != null) PartyController.create(session, description, orDefault(family));
             }
-            case JOIN -> PartyController.join(session, payload.readString());
-            case FIND -> PartyController.find(session);
-            case LIST -> PartyController.list(session);
+            case JOIN -> {
+                String code = payload.readString();
+                String family = readFamily(ctx, payload);
+
+                // A client from before families is told only what it can read.
+                if (family != null) PartyController.join(session, code, family.isEmpty() ? null : family);
+            }
+            case FIND -> {
+                String family = readFamily(ctx, payload);
+
+                if (family != null) PartyController.find(session, orDefault(family));
+            }
+            case LIST -> {
+                String family = readFamily(ctx, payload);
+
+                if (family != null) PartyController.list(session, orDefault(family));
+            }
             case KICK -> PartyController.kick(session, payload.readInt());
             case HOST_CHANGED -> {
                 boolean decline = payload.readUnsignedByte() != 0;
@@ -312,6 +327,35 @@ public class ServerPacketHandler extends PacketHandler {
 
     private void handleTime(InputBuffer payload) {
         session.send(new TimePacket(payload.readLong(), Clock.now()));
+    }
+
+    /**
+     * Reads the game family a party request may end with (openrac_api.world_family: "rac1-60-1",
+     * "rac2-pal-1"). Shipped clients stop before it.
+     * @param ctx The channel handler context.
+     * @param payload The rest of the party request.
+     * @return The family, empty for none, or null when it was invalid and the connection is closed.
+     */
+
+    private String readFamily(ChannelHandlerContext ctx, InputBuffer payload) {
+        String family = payload.size() > 0 ? payload.readString() : "";
+
+        // A family is compared, never shown, so anything but short printable ASCII is a broken client.
+        if (family.length() > Constants.MAX_FAMILY_LENGTH || !family.chars().allMatch(c -> c > 0x20 && c <= 0x7E)) {
+            reject(ctx, "sent an invalid game family");
+            return null;
+        }
+
+        return family;
+    }
+
+    /**
+     * @param family A family as read, empty for none.
+     * @return The family, or the one of every client from before families.
+     */
+
+    private static String orDefault(String family) {
+        return family.isEmpty() ? Constants.DEFAULT_FAMILY : family;
     }
 
     /**
