@@ -18,10 +18,15 @@ public class Constants {
     public static final int MAX_VERSION_LENGTH = 32;
     public static final int MAX_NAME_LENGTH = 32;
     public static final int MAX_CHAT_LENGTH = 256;
+    public static final int MAX_FAMILY_LENGTH = 32;
     public static final int MAX_DESCRIPTION_LENGTH = Environment.getInt("MAX_DESCRIPTION_LENGTH", 48);
 
     public static final int MAX_PARTY_SIZE = Environment.getInt("MAX_PARTY_SIZE", 4); // Host included.
     public static final int MAX_LISTED_PARTIES = Environment.getInt("MAX_LISTED_PARTIES", 32); // Fits the count byte.
+
+    // The game family of a request that names none: every client from before families is a
+    // Ratchet & Clank 1 game, whose PAL and NTSC discs share one world (openrac_api.world_family).
+    public static final String DEFAULT_FAMILY = "rac1-60-1";
 
     // Rate limits per connection: a burst, then the steady rate per second.
     public static final int CHAT_BURST = Environment.getInt("CHAT_BURST", 5);

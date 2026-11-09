@@ -173,6 +173,17 @@ public class PacketCodecTests {
                 Assertions.assertEquals(0, payload.size());
             }
         }
+
+        @Test
+        @DisplayName("Another game's refusal carries the party's family after its reason")
+        public void testOtherGame() {
+            InputBuffer payload = roundTrip(new ErrorPacket(Opcodes.Error.OTHER_GAME, "rac2-ntsc-1"), Packets.ERROR);
+
+            Assertions.assertEquals(6, Opcodes.Error.OTHER_GAME.ordinal());
+            Assertions.assertEquals(Opcodes.Error.OTHER_GAME, Opcodes.Error.get(payload.readUnsignedByte()));
+            Assertions.assertEquals("rac2-ntsc-1", payload.readString());
+            Assertions.assertEquals(0, payload.size());
+        }
     }
 
     @Nested

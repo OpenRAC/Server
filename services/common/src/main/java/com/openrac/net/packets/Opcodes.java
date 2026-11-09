@@ -44,7 +44,8 @@ public final class Opcodes {
         ALREADY_IN_PARTY,
         NOT_IN_PARTY,
         NOT_HOST,
-        RESUME_REFUSED; // Its slot is gone, or the token is wrong.
+        RESUME_REFUSED, // Its slot is gone, or the token is wrong.
+        OTHER_GAME; // The party plays another game family; its family follows.
 
         /**
          * Resolves an error reason from its byte.

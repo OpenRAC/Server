@@ -109,15 +109,15 @@ Names and versions are 1 to 32 characters, chat messages 1 to 256. Parties hold 
 
 | Opcode | Name | Direction | Payload |
 |---|---|---|---|
-| 0 | `CREATE` | client → server | description string, optional (an empty body means none); answered with `INFO`, the creator hosts a party (match finding can fill it, its code invites) |
-| 1 | `JOIN` | client → server | join code string (6 characters, any case) |
+| 0 | `CREATE` | client → server | description string, optional (an empty body means none), then the game family string, optional; answered with `INFO`, the creator hosts a party (match finding can fill it, its code invites) |
+| 1 | `JOIN` | client → server | join code string (6 characters, any case), then the game family string, optional |
 | 2 | `LEAVE` | client → server | none |
 | 3 | `INFO` | server → client | code string, host id int, member count byte, then id int + name string per member, then description string; once either means something, the host's epoch int, then the count byte and ids int of the members away |
 | 4 | `JOINED` | server → members | id int, name string |
 | 5 | `LEFT` | server → members | id int |
 | 6 | `END` | server → members | none; the host left, so the party is gone |
-| 7 | `FIND` | client → server | none; joins the oldest party with room, else hosts a new one; answered with `INFO`; the party it creates has no description |
-| 8 | `LIST` | client → server | none; allowed in or out of a party, answered with `LIST` |
+| 7 | `FIND` | client → server | the game family string, optional; joins the oldest party of that family with room, else hosts a new one; answered with `INFO`; the party it creates has no description |
+| 8 | `LIST` | client → server | the game family string, optional; allowed in or out of a party, answered with `LIST` |
 | | | server → client | count byte (at most 32), then per party: code string, host name string, member count byte, max party size byte, description string |
 | 9 | `HOST_CHANGED` | client → server | decline byte, count byte, then id int per member; from the host only (else `NOT_HOST`). 0: these may follow it, the first choice first, replacing the last list. 1: a new host says it cannot, and the next one is asked |
 | | | server → members | new host id int, epoch int (one more at each change) |
@@ -127,12 +127,13 @@ Names and versions are 1 to 32 characters, chat messages 1 to 256. Parties hold 
 | 12 | `KICKED` | server → member | none; the host removed it from the party |
 
 The description is sanitised on the server: only printable ASCII (0x20 to 0x7E) is kept, the ends are
-trimmed and it is cut to 48 characters. `LIST` names the parties with room (members below the party
-size), oldest first, without the requester's own party; created and match-found parties both appear.
+trimmed and it is cut to 48 characters. `LIST` names the parties of the requester's game family with room
+(members below the party size), oldest first, without the requester's own party; created and
+match-found parties both appear.
 It shares the party-request rate, which allows a request every 3 seconds.
 
 `ERROR` reasons: 0 `PARTY_NOT_FOUND`, 1 `PARTY_FULL`, 2 `ALREADY_IN_PARTY`, 3 `NOT_IN_PARTY`,
-4 `NOT_HOST`, 5 `RESUME_REFUSED`.
+4 `NOT_HOST`, 5 `RESUME_REFUSED`, 6 `OTHER_GAME` (followed by the party's game family string).
 
 `UDP`'s feature bits say which requests this server takes, since an unknown one closes the
 connection: bit 0 (1) `KICK`, bit 1 (2) `RESUME`. A client from before them stops reading at the port.
@@ -159,6 +160,20 @@ Session ids start at 1.
 
 `TIME` lets each game stamp its data against one clock: from its send time, the echo and the
 server's time, a client estimates the round trip and its offset to the server's clock.
+
+### Game families
+
+Each party belongs to its host's game family: the game's `openrac_api.world_family`, such as
+`rac1-60-1` (Ratchet & Clank 1, PAL and NTSC alike) or `rac2-pal-1` (each Going Commando disc is its
+own for now). `CREATE`, `FIND`, `LIST` and `JOIN` end with the asker's family, after their other
+fields, so shipped clients, which stop before it, still work: a request without one counts as
+`rac1-60-1` (`DEFAULT_FAMILY`), since every client from before families is a Ratchet & Clank 1 game.
+A family is up to 32 characters of printable ASCII without spaces; anything else closes the connection.
+
+`LIST` and `FIND` see only the asker's family. A `JOIN` by code into another family's party is
+refused: with `OTHER_GAME` and the party's family when the client named its own, so the game can
+say which game it is for, and with `PARTY_NOT_FOUND` when it did not, as an older client knows no
+other reason.
 
 ## UDP
 

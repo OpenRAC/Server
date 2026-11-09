@@ -597,6 +597,156 @@ public class PartyFlowTests {
     }
 
     @Nested
+    @DisplayName("Family Tests")
+    class FamilyTests {
+        private static final String RAC1 = Constants.DEFAULT_FAMILY;
+        private static final String RAC2 = "rac2-ntsc-1";
+
+        @Test
+        @DisplayName("A list shows only the asker's game family, and none named is Ratchet & Clank 1")
+        public void testListByFamily() {
+            String older = connect("Ratchet").create();
+            String newer = create(connect("Clank"), "Veldin", RAC1);
+            String rac2 = create(connect("Qwark"), "Oozla", RAC2);
+
+            create(connect("Angela"), "Endako", "rac2-pal-1");
+
+            Client viewer = connect("Viewer");
+
+            Assertions.assertEquals(List.of(older, newer), codes(list(viewer)));
+            Assertions.assertEquals(List.of(older, newer), codes(list(viewer, RAC1)));
+            Assertions.assertEquals(List.of(rac2), codes(list(viewer, RAC2)));
+            Assertions.assertEquals(List.of(), codes(list(viewer, "rac3-1")));
+        }
+
+        @Test
+        @DisplayName("A join by code into another family is refused with its family, or as not found for an older client")
+        public void testJoinOtherFamily() {
+            String rac2 = create(connect("Qwark"), "Oozla", RAC2);
+            String rac1 = connect("Ratchet").create();
+
+            Client newer = connect("Clank");
+
+            newer.send(join(rac2, RAC1));
+
+            InputBuffer error = newer.receive(Packets.ERROR);
+
+            Assertions.assertEquals(Opcodes.Error.OTHER_GAME, Opcodes.Error.get(error.readUnsignedByte()));
+            Assertions.assertEquals(RAC2, error.readString());
+            Assertions.assertEquals(0, error.size());
+
+            // An older client knows no such reason, and is a Ratchet & Clank 1 game anyway.
+            Client older = connect("Angela");
+
+            older.send(new PartyPacket(Opcodes.Party.JOIN, rac2));
+            Assertions.assertEquals(Opcodes.Error.PARTY_NOT_FOUND, older.receiveError());
+
+            // A Going Commando game cannot join a Ratchet & Clank 1 party either.
+            Client going = connect("Nefarious");
+
+            going.send(join(rac1, RAC2));
+            Assertions.assertEquals(Opcodes.Error.OTHER_GAME, Opcodes.Error.get(going.receive(Packets.ERROR).readUnsignedByte()));
+
+            // Its own family's party takes it, as the code is the same.
+            going.send(join(rac2, RAC2));
+            Assertions.assertEquals(rac2, going.receiveParty(Opcodes.Party.INFO).readString());
+        }
+
+        @Test
+        @DisplayName("Older and newer Ratchet & Clank 1 clients still play together")
+        public void testOlderClients() {
+            String older = connect("Ratchet").create();
+            String newer = create(connect("Clank"), "Veldin", RAC1);
+
+            Client member = connect("Qwark");
+
+            member.send(join(older, RAC1));
+            Assertions.assertEquals(older, member.receiveParty(Opcodes.Party.INFO).readString());
+
+            connect("Angela").join(newer, 2);
+        }
+
+        @Test
+        @DisplayName("Match finding only fills a party of the finder's family")
+        public void testFindByFamily() {
+            Client host = connect("Ratchet");
+            String rac1 = host.create();
+
+            Client going = connect("Qwark");
+            PartyPacket find = new PartyPacket(Opcodes.Party.FIND);
+
+            find.writeString(RAC2);
+            going.send(find);
+
+            InputBuffer own = going.receiveParty(Opcodes.Party.INFO);
+            String rac2 = own.readString();
+
+            Assertions.assertNotEquals(rac1, rac2);
+            Assertions.assertEquals(going.id, own.readInt());
+
+            // An older finder is a Ratchet & Clank 1 game: the Ratchet & Clank 1 party.
+            Client older = connect("Clank");
+
+            older.send(new PartyPacket(Opcodes.Party.FIND));
+            Assertions.assertEquals(rac1, older.receiveParty(Opcodes.Party.INFO).readString());
+
+            Assertions.assertEquals(List.of(rac2), codes(list(connect("Viewer"), RAC2)));
+        }
+
+        @Test
+        @DisplayName("A family with a space or over the limit closes the connection")
+        public void testInvalidFamily() {
+            for (String family : new String[] { "rac 1", "x".repeat(Constants.MAX_FAMILY_LENGTH + 1) }) {
+                Client client = connect("Ratchet");
+
+                client.send(join("ABCDEF", family));
+
+                Assertions.assertFalse(client.channel.isActive());
+            }
+        }
+
+        /**
+         * Creates a party as a client that names its family.
+         * @param client The host.
+         * @param description The party's description.
+         * @param family The host's game family.
+         * @return The party's join code.
+         */
+
+        private static String create(Client client, String description, String family) {
+            PartyPacket create = new PartyPacket(Opcodes.Party.CREATE, description);
+
+            create.writeString(family);
+            client.send(create);
+
+            return client.receiveParty(Opcodes.Party.INFO).readString();
+        }
+
+        /**
+         * @param code The join code.
+         * @param family The joiner's game family.
+         * @return A JOIN that names its family.
+         */
+
+        private static PartyPacket join(String code, String family) {
+            PartyPacket join = new PartyPacket(Opcodes.Party.JOIN, code);
+
+            join.writeString(family);
+
+            return join;
+        }
+
+        /**
+         * @param listed Parties as listed.
+         * @return Their codes, in order.
+         */
+
+        private static List<String> codes(List<Listing> listed) {
+            return listed.stream().map(Listing::code).toList();
+        }
+    }
+
+    @Nested
     @DisplayName("Limit Tests")
     class LimitTests {
 
@@ -678,7 +828,29 @@ public class PartyFlowTests {
      */
 
     private static List<Listing> list(Client client) {
-        client.send(new PartyPacket(Opcodes.Party.LIST));
+        return read(client, new PartyPacket(Opcodes.Party.LIST));
+    }
+
+    /**
+     * Asks for the party list as a client that names its game family, and reads the answer.
+     * @param client The client asking.
+     * @param family Its game family.
+     * @return The listed parties, in the order sent.
+     */
+
+    private static List<Listing> list(Client client, String family) {
+        return read(client, new PartyPacket(Opcodes.Party.LIST, family));
+    }
+
+    /**
+     * Sends a list request and reads the answer.
+     * @param client The client asking.
+     * @param request The LIST packet.
+     * @return The listed parties, in the order sent.
+     */
+
+    private static List<Listing> read(Client client, PartyPacket request) {
+        client.send(request);
 
         InputBuffer payload = client.receiveParty(Opcodes.Party.LIST);
         int count = payload.readUnsignedByte();

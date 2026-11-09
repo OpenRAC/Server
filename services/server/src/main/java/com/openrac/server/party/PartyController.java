@@ -39,25 +39,27 @@ public class PartyController {
      * Creates a party hosted by the session and sends it the party's details.
      * @param session The session creating the party.
      * @param description The sanitised description to list it under.
+     * @param family The session's game family.
      */
 
-    public static synchronized void create(Session session, String description) {
+    public static synchronized void create(Session session, String description, String family) {
         // A session belongs to one party at a time.
         if (session.getParty() != null) {
             session.send(new ErrorPacket(Opcodes.Error.ALREADY_IN_PARTY));
             return;
         }
 
-        host(session, description);
+        host(session, description, family);
     }
 
     /**
      * Adds the session to the party with the code, telling the members first.
      * @param session The session joining.
      * @param code The join code it entered.
+     * @param family The session's game family, null when its client named none.
      */
 
-    public static synchronized void join(Session session, String code) {
+    public static synchronized void join(Session session, String code, String family) {
         // A session belongs to one party at a time.
         if (session.getParty() != null) {
             session.send(new ErrorPacket(Opcodes.Error.ALREADY_IN_PARTY));
@@ -70,6 +72,12 @@ public class PartyController {
         // A mistyped code, a party whose host already left, or one waiting to see if it has one.
         if (party == null || party.isWaiting()) {
             session.send(new ErrorPacket(Opcodes.Error.PARTY_NOT_FOUND));
+            return;
+        }
+
+        // Another game's party cannot be played. A client that named no family cannot read why.
+        if (!party.getFamily().equals(family == null ? Constants.DEFAULT_FAMILY : family)) {
+            session.send(family == null ? new ErrorPacket(Opcodes.Error.PARTY_NOT_FOUND) : new ErrorPacket(Opcodes.Error.OTHER_GAME, party.getFamily()));
             return;
         }
 
@@ -86,9 +94,10 @@ public class PartyController {
      * Places the session in the oldest party with room, or makes it the host of a new party when
      * there is none.
      * @param session The session looking for a match.
+     * @param family The session's game family.
      */
 
-    public static synchronized void find(Session session) {
+    public static synchronized void find(Session session, String family) {
         // A session belongs to one party at a time.
         if (session.getParty() != null) {
             session.send(new ErrorPacket(Opcodes.Error.ALREADY_IN_PARTY));
@@ -98,6 +107,9 @@ public class PartyController {
         for (Party party : parties.values()) {
             if (party.isFull() || party.isWaiting()) continue;
 
+            // Only a party of the finder's own game can take it.
+            if (!party.getFamily().equals(family)) continue;
+
             // Finding a match must not hand the host back the player it just removed.
             if (party.hasKicked(session)) continue;
 
@@ -106,21 +118,25 @@ public class PartyController {
         }
 
         // No party has room, so the finder hosts the next one.
-        host(session, "");
+        host(session, "", family);
     }
 
     /**
-     * Sends the session the parties it could join: oldest first, with room, not its own.
+     * Sends the session the parties it could join: oldest first, with room, of its game, not its own.
      * @param session The session asking.
+     * @param family The session's game family.
      */
 
-    public static synchronized void list(Session session) {
+    public static synchronized void list(Session session, String family) {
         OutputBuffer listing = new OutputBuffer();
         int count = 0;
 
         for (Party party : parties.values()) {
             // The list is for finding a party to join, and a full one cannot be joined.
             if (party.isFull() || party.isWaiting()) continue;
+
+            // Another game's party could not be played.
+            if (!party.getFamily().equals(family)) continue;
 
             // A session has no use for the party it is already in.
             if (party == session.getParty()) continue;
@@ -144,15 +160,16 @@ public class PartyController {
      * Makes the session the host of a new party and sends it the party's details.
      * @param session The session hosting.
      * @param description The sanitised description to list it under.
+     * @param family The session's game family, which the party keeps.
      */
 
-    private static void host(Session session, String description) {
-        Party party = new Party(generateCode(), session, description);
+    private static void host(Session session, String description, String family) {
+        Party party = new Party(generateCode(), session, description, family);
 
         parties.put(party.getCode(), party);
         session.setParty(party);
 
-        Log.info(describe(session) + " is hosting party " + party.getCode() + ".");
+        Log.info(describe(session) + " is hosting party " + party.getCode() + " (" + family + ").");
 
         session.send(new PartyPacket(Opcodes.Party.INFO, party.serialize()));
     }
