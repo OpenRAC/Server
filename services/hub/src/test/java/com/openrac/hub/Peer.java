@@ -1,15 +1,12 @@
 package com.openrac.hub;
 
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
-import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.jupiter.api.Assertions;
 
 import com.openrac.hub.net.HubChannelInitializer;
+import com.openrac.net.EmbeddedPeer;
 import com.openrac.net.packets.Opcodes;
 import com.openrac.net.packets.Packets;
 import com.openrac.net.packets.model.InputBuffer;
-import com.openrac.net.packets.model.OutgoingPacket;
 import com.openrac.net.packets.out.HelloPacket;
 import com.openrac.net.packets.out.RegisterPacket;
 
@@ -18,15 +15,13 @@ import com.openrac.net.packets.out.RegisterPacket;
  * server.
  */
 
-public class Peer {
-    public final EmbeddedChannel channel = new EmbeddedChannel();
-
+public class Peer extends EmbeddedPeer {
     /**
      * Builds the hub's pipeline on the embedded channel.
      */
 
     public Peer() {
-        new HubChannelInitializer().initPipeline(channel.pipeline());
+        super(new HubChannelInitializer());
     }
 
     /**
@@ -63,47 +58,6 @@ public class Peer {
     }
 
     /**
-     * Frames a packet the way a peer would and feeds it to the hub.
-     * @param packet The packet to send.
-     */
-
-    public void send(OutgoingPacket packet) {
-        ByteBuf frame = Unpooled.buffer();
-
-        frame.writeInt(packet.size());
-        packet.writeTo(frame);
-
-        channel.writeInbound(frame);
-    }
-
-    /**
-     * Reads the next packet the hub sent and checks its id.
-     * @param expected The packet expected next.
-     * @return The payload after the id.
-     */
-
-    public InputBuffer receive(Packets expected) {
-        // The prepender sends the length and the packet as two buffers.
-        ByteBuf length = channel.readOutbound();
-
-        Assertions.assertNotNull(length, "Expected " + expected + " but nothing was sent.");
-
-        ByteBuf body = channel.readOutbound();
-        byte[] bytes = new byte[length.readInt()];
-
-        body.readBytes(bytes);
-
-        length.release();
-        body.release();
-
-        InputBuffer payload = new InputBuffer(bytes);
-
-        Assertions.assertEquals(expected, Packets.getFromByte(payload.readUnsignedByte()));
-
-        return payload;
-    }
-
-    /**
      * @param expected The hub opcode expected next.
      * @return The payload after the opcode.
      */
@@ -127,21 +81,5 @@ public class Peer {
         Assertions.assertEquals(expected, Opcodes.Servers.get(payload.readUnsignedByte()));
 
         return payload;
-    }
-
-    /**
-     * @return The reason of the next packet, which must be an error.
-     */
-
-    public Opcodes.Error receiveError() {
-        return Opcodes.Error.get(receive(Packets.ERROR).readUnsignedByte());
-    }
-
-    /**
-     * Checks the hub sent this peer nothing more.
-     */
-
-    public void assertSilent() {
-        Assertions.assertNull(channel.readOutbound());
     }
 }

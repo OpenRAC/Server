@@ -1,8 +1,5 @@
 package com.openrac.server;
 
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
-import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
@@ -10,10 +7,10 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import com.openrac.hub.net.HubChannelInitializer;
+import com.openrac.net.netty.PacketChannelInitializer;
 import com.openrac.net.packets.Opcodes;
 import com.openrac.net.packets.Packets;
 import com.openrac.net.packets.model.InputBuffer;
-import com.openrac.net.packets.model.OutgoingPacket;
 import com.openrac.net.packets.model.OutputBuffer;
 import com.openrac.net.packets.out.AccountPacket;
 import com.openrac.net.packets.out.HelloPacket;
@@ -21,6 +18,7 @@ import com.openrac.net.packets.out.HubPacket;
 import com.openrac.net.packets.out.RegionsPacket;
 import com.openrac.server.hub.HubController;
 import com.openrac.server.hub.Mode;
+import com.openrac.server.net.ServerChannelInitializer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,70 +29,28 @@ import java.util.List;
  */
 
 public class HubLinkTests {
-    private final List<EmbeddedChannel> channels = new ArrayList<>();
+    private final List<Client> clients = new ArrayList<>();
 
     /**
-     * Closes every channel a test opened.
+     * Closes every connection a test opened.
      */
 
     @AfterEach
-    public void closeChannels() {
-        for (EmbeddedChannel channel : channels) channel.close();
+    public void closeClients() {
+        for (Client client : clients) client.channel.close();
     }
 
     /**
-     * @return A connection into this process's hub.
+     * @param initializer The pipeline the connection runs.
+     * @return A new connection on it.
      */
 
-    private EmbeddedChannel connectHub() {
-        EmbeddedChannel channel = new EmbeddedChannel();
+    private Client connect(PacketChannelInitializer initializer) {
+        Client client = new Client(initializer);
 
-        new HubChannelInitializer().initPipeline(channel.pipeline());
-        channels.add(channel);
+        clients.add(client);
 
-        return channel;
-    }
-
-    /**
-     * Frames a packet and feeds it into a channel.
-     * @param channel The receiving end.
-     * @param packet The packet.
-     */
-
-    private static void send(EmbeddedChannel channel, OutgoingPacket packet) {
-        ByteBuf frame = Unpooled.buffer();
-
-        frame.writeInt(packet.size());
-        packet.writeTo(frame);
-
-        channel.writeInbound(frame);
-    }
-
-    /**
-     * Reads the next packet a channel sent and checks its id.
-     * @param channel The sending end.
-     * @param expected The packet expected next.
-     * @return The payload after the id.
-     */
-
-    private static InputBuffer receive(EmbeddedChannel channel, Packets expected) {
-        ByteBuf length = channel.readOutbound();
-
-        Assertions.assertNotNull(length, "Expected " + expected + " but nothing was sent.");
-
-        ByteBuf body = channel.readOutbound();
-        byte[] bytes = new byte[length.readInt()];
-
-        body.readBytes(bytes);
-
-        length.release();
-        body.release();
-
-        InputBuffer payload = new InputBuffer(bytes);
-
-        Assertions.assertEquals(expected, Packets.getFromByte(payload.readUnsignedByte()));
-
-        return payload;
+        return client;
     }
 
     @Nested
@@ -124,19 +80,19 @@ public class HubLinkTests {
         @Test
         @DisplayName("The process's own region is listed by its own hub at its game port")
         public void testOwnRegion() {
-            EmbeddedChannel link = connectHub();
-            EmbeddedChannel player = connectHub();
+            Client link = connect(new HubChannelInitializer());
+            Client player = connect(new HubChannelInitializer());
 
-            send(link, HubController.getRegistration());
-            receive(link, Packets.HUB);
-            send(link, HubController.getStatus());
+            link.send(HubController.getRegistration());
+            link.receive(Packets.HUB);
+            link.send(HubController.getStatus());
 
-            send(player, new HelloPacket("0.1.0", "Ratchet"));
-            receive(player, Packets.HELLO);
-            receive(player, Packets.UDP);
-            send(player, new RegionsPacket("rac3-pal-1"));
+            player.send(new HelloPacket("0.1.0", "Ratchet"));
+            player.receive(Packets.HELLO);
+            player.receive(Packets.UDP);
+            player.send(new RegionsPacket("rac3-pal-1"));
 
-            InputBuffer regions = receive(player, Packets.REGIONS);
+            InputBuffer regions = player.receive(Packets.REGIONS);
 
             Assertions.assertEquals(1, regions.readUnsignedByte());
             Assertions.assertEquals(Constants.REGION_NAME, regions.readString());
@@ -147,7 +103,7 @@ public class HubLinkTests {
         @Test
         @DisplayName("A game server sends clients asking for regions to the hub")
         public void testNoRegionsHere() {
-            Client client = new Client();
+            Client client = connect(new ServerChannelInitializer());
 
             client.hello("Ratchet");
             client.send(new RegionsPacket("rac3-pal-1"));
@@ -163,19 +119,17 @@ public class HubLinkTests {
         @Test
         @DisplayName("A token the hub vouches for logs the player in at the server")
         public void testVerified() {
-            EmbeddedChannel link = new EmbeddedChannel();
+            Client link = connect(HubController.getInitializer());
 
-            HubController.getInitializer().initPipeline(link.pipeline());
-            channels.add(link);
-            HubController.attach(link);
-            receive(link, Packets.REGISTER);
+            HubController.attach(link.channel);
+            link.receive(Packets.REGISTER);
 
-            Client client = new Client();
+            Client client = connect(new ServerChannelInitializer());
 
             client.hello("Ratchet");
             client.send(new AccountPacket(Opcodes.Account.TOKEN, "token"));
 
-            InputBuffer verify = receive(link, Packets.HUB);
+            InputBuffer verify = link.receive(Packets.HUB);
 
             Assertions.assertEquals(Opcodes.Hub.VERIFY, Opcodes.Hub.get(verify.readUnsignedByte()));
 
@@ -184,27 +138,23 @@ public class HubLinkTests {
             answer.writeInt(verify.readInt());
             answer.writeLong(42L);
             answer.writeString("Ratchet");
-            send(link, new HubPacket(Opcodes.Hub.VERIFIED, answer));
+            link.send(new HubPacket(Opcodes.Hub.VERIFIED, answer));
 
             InputBuffer loggedIn = client.receive(Packets.ACCOUNT);
 
             Assertions.assertEquals(Opcodes.Account.LOGGED_IN, Opcodes.Account.get(loggedIn.readUnsignedByte()));
             Assertions.assertEquals(42L, loggedIn.readLong());
-
-            client.channel.close();
         }
 
         @Test
         @DisplayName("Without a hub link a token is answered with try later")
         public void testNoHub() {
-            Client client = new Client();
+            Client client = connect(new ServerChannelInitializer());
 
             client.hello("Ratchet");
             client.send(new AccountPacket(Opcodes.Account.TOKEN, "token"));
 
             Assertions.assertEquals(Opcodes.Error.TRY_LATER, client.receiveError());
-
-            client.channel.close();
         }
     }
 }

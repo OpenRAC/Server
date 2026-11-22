@@ -222,15 +222,10 @@ public class HubPacketHandler extends PacketHandler {
             case CLOSING -> ServerController.remove(server);
             case VERIFY -> {
                 int request = payload.readInt();
-                String token = payload.readString();
+                String token = readToken(ctx, payload);
 
-                // A token past the limit is no token the hub gave out.
-                if (token.length() > Constants.MAX_TOKEN_LENGTH) {
-                    reject(ctx, "sent an oversized token");
-                    return;
-                }
-
-                AccountController.verify(ctx.channel(), request, token);
+                // An invalid token already closed the connection.
+                if (token != null) AccountController.verify(ctx.channel(), request, token);
             }
 
             // The rest only the hub sends.
@@ -270,20 +265,34 @@ public class HubPacketHandler extends PacketHandler {
         switch (Opcodes.Account.get(payload.readUnsignedByte())) {
             case LOGIN -> AccountController.login(ctx.channel(), address, payload.readString(), payload.readString());
             case LOGOUT -> {
-                String token = payload.readString();
+                String token = readToken(ctx, payload);
 
-                // A token past the limit is no token the hub gave out.
-                if (token.length() > Constants.MAX_TOKEN_LENGTH) {
-                    reject(ctx, "sent an oversized token");
-                    return;
-                }
-
-                AccountController.logout(ctx.channel(), token);
+                // An invalid token already closed the connection.
+                if (token != null) AccountController.logout(ctx.channel(), token);
             }
 
             // TOKEN belongs to game servers, LOGGED_IN to the hub.
             case null, default -> reject(ctx, "sent an invalid account opcode");
         }
+    }
+
+    /**
+     * Reads a session token, closing a connection that sends one the hub never gave out.
+     * @param ctx The channel handler context.
+     * @param payload The rest of the packet.
+     * @return The token, or null when it was invalid and the connection is closed.
+     */
+
+    private String readToken(ChannelHandlerContext ctx, InputBuffer payload) {
+        String token = payload.readString();
+
+        // A blank or oversized token is no token the hub gave out.
+        if (!Utils.isValid(token, Constants.MAX_TOKEN_LENGTH)) {
+            reject(ctx, "sent an invalid token");
+            return null;
+        }
+
+        return token;
     }
 
     /**

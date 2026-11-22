@@ -18,6 +18,8 @@ dependencies {
     implementation(libs.flyway.core)
     implementation(libs.flyway.postgresql)
     implementation(libs.bcrypt)
+
+    testImplementation(testFixtures(project(":common")))
 }
 
 tasks {

@@ -75,10 +75,10 @@ public class HubController {
      */
 
     public static void stop() {
-        Channel link = channel;
+        Channel link = getLink();
 
         // Without a link there is nobody to tell.
-        if (link == null || !link.isActive()) return;
+        if (link == null) return;
 
         link.writeAndFlush(new HubPacket(Opcodes.Hub.CLOSING)).addListener(ChannelFutureListener.CLOSE).awaitUninterruptibly(2, TimeUnit.SECONDS);
     }
@@ -104,10 +104,10 @@ public class HubController {
      */
 
     public static void verify(Session session, String token) {
-        Channel link = channel;
+        Channel link = getLink();
 
         // Without the hub nobody can vouch for the token.
-        if (link == null || !link.isActive()) {
+        if (link == null) {
             session.send(new ErrorPacket(Opcodes.Error.TRY_LATER));
             return;
         }
@@ -158,10 +158,10 @@ public class HubController {
         // A wrong key stays wrong until the operator fixes it.
         if (refused) return;
 
-        Channel link = channel;
+        Channel link = getLink();
 
         // No link: try to make one, which registers on success.
-        if (link == null || !link.isActive()) {
+        if (link == null) {
             channel = null;
             connect();
             return;
@@ -221,6 +221,17 @@ public class HubController {
         for (Session session : pending.values()) session.send(new ErrorPacket(Opcodes.Error.TRY_LATER));
 
         pending.clear();
+    }
+
+    /**
+     * @return The link to the hub while it is open, else null.
+     */
+
+    private static Channel getLink() {
+        Channel link = channel;
+
+        // A closed link counts as none.
+        return link != null && link.isActive() ? link : null;
     }
 
     /**

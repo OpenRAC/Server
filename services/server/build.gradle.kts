@@ -14,6 +14,8 @@ dependencies {
     implementation(project(":hub"))
     implementation(libs.netty.codec.http)
     implementation(libs.gson)
+
+    testImplementation(testFixtures(project(":common")))
 }
 
 tasks {
