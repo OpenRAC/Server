@@ -45,6 +45,8 @@ public class Session {
     private volatile long awayAt; // Clock.now() of the drop.
     private volatile long heardAt = Clock.now(); // Clock.now() of the last packet or datagram.
 
+    private volatile String uiFamily; // The family whose screens it last asked for.
+
     /**
      * Creates a session with the next free id.
      * @param channel The connection's channel.
@@ -239,6 +241,14 @@ public class Session {
     }
 
     /**
+     * @return The family whose UI description this session last asked for, or null.
+     */
+
+    public String getUiFamily() {
+        return uiFamily;
+    }
+
+    /**
      * Sets the party this session is in.
      * @param party The party, or null when it leaves one.
      */
@@ -256,6 +266,14 @@ public class Session {
     public void setUdpAddress(InetSocketAddress udpAddress, long heard) {
         this.udpAddress = udpAddress;
         this.udpHeard = heard;
+    }
+
+    /**
+     * @param uiFamily The family whose UI description this session asked for.
+     */
+
+    public void setUiFamily(String uiFamily) {
+        this.uiFamily = uiFamily;
     }
 
     /**

@@ -39,6 +39,26 @@ public final class Opcodes {
         }
     }
 
+    public enum Ui {
+        GET, // Client asks for its game family's screens.
+        DESCRIPTION, // Server sends the screens, or none for the game's own.
+        ACTION, // Client chose a server action on a screen.
+        NOTICE; // Server answers an action with a line to show.
+
+        /**
+         * Resolves a UI opcode from its byte.
+         * @param id The opcode byte read from the wire.
+         * @return The matching opcode, or null if the byte is out of range.
+         */
+
+        public static Ui get(int id) {
+            // Past either end is no opcode at all.
+            if (id < 0 || id >= values().length) return null;
+
+            return values()[id];
+        }
+    }
+
     public enum Error {
         PARTY_NOT_FOUND,
         PARTY_FULL,

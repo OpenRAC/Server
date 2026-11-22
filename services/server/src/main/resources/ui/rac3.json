@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "name": "Up Your Arsenal",
+  "revision": 1,
+  "screens": [
+    {
+      "id": "game_list",
+      "columns": [ { "field": "name", "width": 100 } ],
+      "items": [ { "kind": "table", "key": "games", "action": "game:join" } ]
+    }
+  ]
+}
