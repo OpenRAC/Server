@@ -39,6 +39,10 @@ public final class Opcodes {
         }
     }
 
+    /**
+     * The UI packet's opcodes: a game's lobby screens and the actions chosen on them.
+     */
+
     public enum Ui {
         GET, // Client asks for its game family's screens.
         DESCRIPTION, // Server sends the screens, or none for the game's own.
