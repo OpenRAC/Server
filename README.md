@@ -100,15 +100,15 @@ Names and versions are 1 to 32 characters, chat messages 1 to 256. Parties hold 
 | | | server → members | sender id int, message string |
 | 3 | `DATA` | client → server | target id int, opaque bytes to the end of the frame |
 | | | server → client | sender id int, opaque bytes |
-| 8 | `REGIONS` | client → hub | the game family string |
-| | | hub → client | count byte, then per region: name string, host string (empty: the address the client reached the hub on), port int, players int |
-| 9 | `REGISTER` | region → hub | key string, name string, host string (empty: the address the hub sees), port int, players int; after `HELLO`, then every `REGION_REPORT_SECONDS` |
 | 4 | `ERROR` | server → client | reason opcode byte |
 | 5 | `TIME` | client → server | client time long (ms) |
 | | | server → client | the client time echoed, server time long (ms since the server started) |
 | 6 | `UDP` | server → client | UDP token long, UDP port int, feature bits byte, resume token long; sent right after the `HELLO` answer |
 | 7 | `RELAY` | client → server | target id int (0 every other member), opaque bytes to the end of the frame |
 | | | server → client | sender id int, opaque bytes |
+| 8 | `REGIONS` | client → hub | the game family string |
+| | | hub → client | count byte, then per region: name string, host string (empty: the address the client reached the hub on), port int, players int |
+| 9 | `REGISTER` | region → hub | key string, name string, host string (empty: the address the hub sees), port int, players int; after `HELLO`, then every `REGION_REPORT_SECONDS` |
 
 `PARTY` opcodes:
 
@@ -265,9 +265,9 @@ launcher checks everything again and shows it to the player before anything chan
 
 ## Acknowledgements
 
-The Horizon Private Server project (https://github.com/Horizon-Private-Server/horizon-server, MIT
-license) was used for protocol research: to understand what the online games' lobby and game room
-messages do while their handling was identified in the games' own code. No code was taken from it.
+The protocol work drew on the Horizon Private Server project
+(https://github.com/Horizon-Private-Server/horizon-server), read for reference only. No code was
+taken from it.
 
 ## License
 
