@@ -138,6 +138,7 @@ Names and versions are 1 to 32 characters, chat messages 1 to 256. Parties hold 
 | 11 | `HUB` | both | opcode byte, then as below: a game server's link to the hub |
 | 12 | `SERVERS` | both | opcode byte, then as below: the live game server list |
 | 13 | `ACCOUNT` | both | opcode byte, then as below: logins at the hub, and proving them to a game server |
+| 14 | `STATS` | both | opcode byte, the game family string, then as below: totals and the game's own ladders, at the hub |
 
 `PARTY` opcodes:
 
@@ -177,6 +178,7 @@ It shares the party-request rate, which allows a request every 3 seconds.
 | 2 | `CLOSING` | game server → hub | none; the server is shutting down and leaves the list at once |
 | 3 | `VERIFY` | game server → hub | request int, session token string; whose login a player's token is |
 | 4 | `VERIFIED` | hub → game server | request int, account id long (0: no such session), account name string |
+| 5 | `RESULT` | game server → hub | a finished game: family string, game name string, mode int, map int, duration int (seconds), winning team int (-1 none), count byte (at most 32), then per player: account id long (0 a guest), name string, team int (-1 none), kills int, deaths int, score int, won byte; no answer |
 
 `SERVERS` opcodes (between a client and the hub):
 
@@ -197,12 +199,39 @@ It shares the party-request rate, which allows a request every 3 seconds.
 | 2 | `TOKEN` | client → game server | the session token from the hub's `LOGGED_IN` |
 | 3 | `LOGOUT` | client → hub | the session token; it stops working |
 
+`STATS` opcodes (between a client and the hub; every request starts with the game family string
+after the opcode, and so does this table's payload column after it). Each `LADDER` and `CAREER`
+opcode answers one of the game's own Medius requests, so a lobby can map them one to one:
+
+| Opcode | Name | Medius request | Direction | Payload after the family |
+|---|---|---|---|---|
+| 0 | `TOTALS` | | client → hub | account id long |
+| | | | hub → client | account id long, family string, games int, wins int, kills int, deaths int, score long (all 0 before a game) |
+| 1 | `LADDER_WRITE` | `LADDER_STATS_WRITE` 4/0x0B | client → hub | ladder type int, count byte (at most 100), then the values int; the logged-in account's own row, replaced |
+| | | | hub → client | none (else `NOT_LOGGED_IN` or `TRY_LATER`) |
+| 2 | `LADDER_READ` | `LADDER_STATS_READ` 4/0x0D | client → hub | account id long, ladder type int |
+| | | | hub → client | account id long, ladder type int, count byte, then the values int (count 0: none written) |
+| 3 | `LADDER_PAGE` | `LADDER_PAGE` 4/0x0F | client → hub | ladder type int, sort index byte (0-99), descending byte, start position int (from 1), count byte (at most 32) |
+| | | | hub → client | total int (accounts on the ladder), count byte, then per row: position int, account id long, name string, count byte and the values int |
+| 4 | `LADDER_POSITION` | `LADDER_POSITION` 1/0xF1 | client → hub | account id long, ladder type int, sort index byte, descending byte |
+| | | | hub → client | account id long, position int (0: not on the ladder), total int |
+| 5 | `CAREER_WRITE` | `CAREER_STATS_UPLOAD` 1/0x11 | client → hub | bytes to the end of the frame (at most 256); the logged-in account's own, replaced |
+| | | | hub → client | none (else `NOT_LOGGED_IN` or `TRY_LATER`) |
+| 6 | `CAREER_READ` | the Stats of account info and player lists | client → hub | account id long |
+| | | | hub → client | account id long, the bytes to the end of the frame (none: never written) |
+
+A ladder sorts by one of its values; ties share a position (the next row after two at 2 is 4), and
+a row shorter than the index counts that value as 0. The values and career bytes are the game's
+own, opaque to the hub. Reads take any account id; writes need an `ACCOUNT LOGIN` on the same hub
+connection. The totals come only from game servers' `RESULT`s.
+
 `ERROR` reasons: 0 `PARTY_NOT_FOUND`, 1 `PARTY_FULL`, 2 `ALREADY_IN_PARTY`, 3 `NOT_IN_PARTY`,
 4 `NOT_HOST`, 5 `RESUME_REFUSED`, 6 `OTHER_GAME` (followed by the party's game family string),
 7 `REGION_KEY` (the hub asks for another key; the server stops trying), 8 `HUB_FULL` (the hub
 lists 32 servers; the server tries again), 9 `WRONG_PASSWORD`, 10 `INVALID_ACCOUNT` (a name or
 password the hub does not take), 11 `SESSION_INVALID` (an unknown, expired or ended token),
-12 `TRY_LATER` (too many wrong passwords from the address, the hub unreachable, or its database down).
+12 `TRY_LATER` (too many wrong passwords from the address, the hub unreachable, or its database down),
+13 `NOT_LOGGED_IN` (a stats write on a hub connection with no account login).
 
 `UDP`'s feature bits say which requests this server takes, since an unknown one closes the
 connection: bit 0 (1) `KICK`, bit 1 (2) `RESUME`, bit 2 (4) `ADVERT`, bit 3 (8) `RELAY`, bit 4 (16)
@@ -337,24 +366,39 @@ bcrypt hashes (`PASSWORD_COST`, 10). A login hands out a random 256-bit session 
 Only the hub talks to the database: game servers learn who a player is through `VERIFY`, so they
 need no database credentials.
 
+### Stats and ladders
+
+Two kinds, both kept by the hub per game family. **Totals** (games, wins, kills, deaths, score) come
+from the game servers: when a game ends, its server sends `HUB RESULT` with the scoreboard, and the
+hub stores the game (the history) and adds each logged-in player's line to its totals. Guests get a
+line in the game but no totals. **The game's own stats** are what Up Your Arsenal writes and reads
+through Medius: its ladder rows (up to 100 values per ladder type) and its career bytes. The hub
+stores and sorts them without reading them, so the port's lobby can answer the game's ladder
+screens directly.
+
 ### Database
 
 With `DATABASE_URL` set (`jdbc:postgresql://host:5432/openrac`, with `DATABASE_USER` and
-`DATABASE_PASSWORD`), the hub keeps the accounts in PostgreSQL. On start it brings the schema up to
+`DATABASE_PASSWORD`), the hub keeps the accounts and stats in PostgreSQL. On start it brings the schema up to
 date with the Flyway migrations in `services/hub/src/main/resources/db/migration`; a migration that
-has run is never edited, a change is a new `V<n>__<what>.sql`. Without `DATABASE_URL` the accounts
-live in memory, which suits a LAN party, and are gone when the hub stops.
+has run is never edited, a change is a new `V<n>__<what>.sql`. Without `DATABASE_URL` the accounts and
+stats live in memory, which suits a LAN party, and are gone when the hub stops (memory keeps the
+totals but not the game history).
 
-The schema (`V1__accounts_and_sessions.sql`):
+The schema (`V1__accounts_and_sessions.sql`, then `V2__stats_ladder_and_history.sql`):
 
 | Table | Columns |
 |---|---|
 | `accounts` | `id` bigint identity primary key, `name` text (unique on `lower(name)`), `password_hash` text, `created_at` timestamptz, `last_login` timestamptz |
 | `sessions` | `token_hash` text primary key (SHA-256 of the token), `account_id` bigint references `accounts` on delete cascade, `created_at`, `expires_at` timestamptz |
+| `games` | `id` bigint identity primary key, `family`, `region`, `server`, `name` text, `mode`, `map`, `duration_seconds`, `winning_team` int, `ended_at` timestamptz; indexed on (`family`, `ended_at` desc) |
+| `game_players` | (`game_id` references `games` on delete cascade, `slot` smallint) primary key, `account_id` bigint references `accounts` on delete set null (null: a guest), `name` text, `team`, `kills`, `deaths`, `score` int, `won` boolean |
+| `player_stats` | (`account_id` references `accounts` on delete cascade, `family`) primary key, `games`, `wins`, `kills`, `deaths` int, `score` bigint, `updated_at`; added to with each `RESULT` |
+| `ladder_stats` | (`account_id`, `family`, `ladder_type` int) primary key, `stats` int[] (up to 100), `updated_at`; the game's `LADDER_WRITE` rows |
+| `career_stats` | (`account_id`, `family`) primary key, `stats` bytea (up to 256), `updated_at`; the game's `CAREER_WRITE` bytes |
 
-Player stats, the ladder and game history come next, then clans and buddy or ignore lists: each as
-its own migration, keyed on `accounts.id`. Game servers will report finished games to the hub over
-`HUB`, so they still need no database.
+Game servers report finished games over `HUB RESULT`, so they still need no database. Clans and
+buddy or ignore lists come later, each as its own migration keyed on `accounts.id`.
 
 ## Self-hosting
 
