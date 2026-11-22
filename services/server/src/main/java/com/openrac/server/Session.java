@@ -42,6 +42,7 @@ public class Session {
 
     private final boolean resumes; // This client comes back with RESUME.
     private final boolean readsSlots; // This client understands SLOTS.
+    private final boolean keepsAlive; // This client sends TIME every few seconds.
     private volatile boolean away; // Its connection dropped and its slot waits for it.
     private volatile long awayAt; // Clock.now() of the drop.
     private volatile long heardAt = Clock.now(); // Clock.now() of the last packet or datagram.
@@ -52,14 +53,16 @@ public class Session {
      * @param name The player's display name.
      * @param resumes Whether the client said it comes back with RESUME.
      * @param readsSlots Whether the client said it reads SLOTS.
+     * @param keepsAlive Whether the client said it sends TIME every few seconds.
      */
 
-    public Session(Channel channel, String name, boolean resumes, boolean readsSlots) {
+    public Session(Channel channel, String name, boolean resumes, boolean readsSlots, boolean keepsAlive) {
         this.id = nextId.getAndIncrement();
         this.name = name;
         this.channel = channel;
         this.resumes = resumes;
         this.readsSlots = readsSlots;
+        this.keepsAlive = keepsAlive;
     }
 
     /**
@@ -167,6 +170,14 @@ public class Session {
 
     public boolean canReadSlots() {
         return readsSlots;
+    }
+
+    /**
+     * @return Whether the client sends TIME every few seconds.
+     */
+
+    public boolean hasKeepAlive() {
+        return keepsAlive;
     }
 
     /**

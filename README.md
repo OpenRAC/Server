@@ -152,7 +152,9 @@ client says `HELLO`, then `RESUME`: refused with `RESUME_REFUSED`, or answered a
 (`HELLO` with the old id, `UDP`, `INFO`), the others told with `RESUME` 1. UDP is bound again from
 nothing. In a party, a client that can come back and has been silent for `PARTY_IDLE_SECONDS` (5) on
 both TCP and UDP is closed, since a machine that dies closes nothing. A client without that bit
-leaves when its connection goes, as ever.
+leaves when its connection goes, as ever. A client that sets bit 2 promises `TIME` every few seconds:
+silent for `KEEP_ALIVE_IDLE_SECONDS` (30, long enough for a map load), it is closed and leaves its
+party as on a disconnect (a host's party then goes on as a host's leaving decides).
 
 A host's connection dropping makes the party wait for `HOST_GRACE_SECONDS` (15): it can come back
 as above, nobody can join or find the party meanwhile, and nothing is forwarded to it. Then the first

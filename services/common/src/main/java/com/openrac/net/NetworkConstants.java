@@ -22,4 +22,5 @@ public class NetworkConstants {
 
     public static final int CLIENT_RESUMES = 1; // HELLO's client bit: this client comes back with RESUME.
     public static final int CLIENT_SLOTS = 2; // HELLO's client bit: this client reads SLOTS.
+    public static final int CLIENT_KEEPS_ALIVE = 4; // HELLO's client bit: this client sends TIME every few seconds.
 }

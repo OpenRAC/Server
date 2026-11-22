@@ -441,6 +441,12 @@ public class PartyController {
                     member.close();
                 }
 
+                // A client that promised TIME and sends nothing has hung or died.
+                if (!member.resumes() && member.hasKeepAlive() && now - member.getHeardAt() >= Constants.KEEP_ALIVE_IDLE_SECONDS * 1000L) {
+                    Log.info(describe(member) + " stopped sending, dropping it.");
+                    member.close();
+                }
+
                 // A host's slot is for the party to wait on: the wait runs out first.
                 if (member.isAway() && !party.isHost(member) && now - member.getAwayAt() >= Constants.RESUME_SECONDS * 1000L) leave(member);
             }

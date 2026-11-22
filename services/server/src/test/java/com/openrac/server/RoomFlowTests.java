@@ -16,6 +16,7 @@ import com.openrac.net.packets.out.RegionsPacket;
 import com.openrac.net.packets.out.RegisterPacket;
 import com.openrac.net.packets.out.RelayPacket;
 import com.openrac.server.hub.Mode;
+import com.openrac.server.party.PartyController;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -102,19 +103,40 @@ public class RoomFlowTests {
     }
 
     /**
+     * Connects a player that says hello with client bits.
+     * @param name The display name.
+     * @param bits The HELLO client bits.
+     * @return The greeted client.
+     */
+
+    private Client connectWith(String name, int bits) {
+        Client client = new Client();
+
+        clients.add(client);
+        client.send(new HelloPacket("0.1.0", name, bits));
+        client.readGreeting();
+
+        return client;
+    }
+
+    /**
      * Connects a player that reads SLOTS and says hello.
      * @param name The display name.
      * @return The greeted client.
      */
 
     private Client connectSlotted(String name) {
-        Client client = new Client();
+        return connectWith(name, NetworkConstants.CLIENT_SLOTS);
+    }
 
-        clients.add(client);
-        client.send(new HelloPacket("0.1.0", name, NetworkConstants.CLIENT_SLOTS));
-        client.readGreeting();
+    /**
+     * Connects a player that promises TIME every few seconds and says hello.
+     * @param name The display name.
+     * @return The greeted client.
+     */
 
-        return client;
+    private Client connectKeepingAlive(String name) {
+        return connectWith(name, NetworkConstants.CLIENT_KEEPS_ALIVE);
     }
 
     /**
@@ -459,6 +481,77 @@ public class RoomFlowTests {
             region.channel.close();
 
             Assertions.assertNull(regions(player).get("Polaris"));
+        }
+    }
+
+    @Nested
+    @DisplayName("Keep Alive Tests")
+    class KeepAliveTests {
+
+        /**
+         * @return The sweep time just past the keep-alive idle limit.
+         */
+
+        private long pastIdleLimit() {
+            return Clock.now() + Constants.KEEP_ALIVE_IDLE_SECONDS * 1000L + 1000L;
+        }
+
+        @Test
+        @DisplayName("A keep-alive member gone quiet is dropped and the others hear it left")
+        public void testQuietMember() {
+            Client host = connect("Ratchet");
+            Client member = connectKeepingAlive("Clank");
+
+            party(host, member);
+            PartyController.sweep(pastIdleLimit());
+
+            Assertions.assertFalse(member.channel.isActive());
+            Assertions.assertEquals(member.id, host.receiveParty(Opcodes.Party.LEFT).readInt());
+        }
+
+        @Test
+        @DisplayName("A keep-alive host gone quiet leaves as a host does, ending a party nobody takes over")
+        public void testQuietHost() {
+            Client host = connectKeepingAlive("Ratchet");
+            Client member = connect("Clank");
+
+            party(host, member);
+            PartyController.sweep(pastIdleLimit());
+
+            Assertions.assertFalse(host.channel.isActive());
+            member.receiveParty(Opcodes.Party.END);
+        }
+
+        @Test
+        @DisplayName("A keep-alive member heard within the limit stays")
+        public void testHeardMember() {
+            Client host = connect("Ratchet");
+            Client member = connectKeepingAlive("Clank");
+
+            party(host, member);
+            PartyController.sweep(Clock.now() + Constants.KEEP_ALIVE_IDLE_SECONDS * 1000L - 2000L);
+
+            Assertions.assertTrue(member.channel.isActive());
+            host.assertSilent();
+        }
+
+        @Test
+        @DisplayName("A member that never promised TIME is never dropped for silence")
+        public void testNoPromise() {
+            Client host = connect("Ratchet");
+            Client member = connect("Clank");
+
+            party(host, member);
+            PartyController.sweep(pastIdleLimit());
+
+            Assertions.assertTrue(member.channel.isActive());
+            host.assertSilent();
+        }
+
+        @Test
+        @DisplayName("The keep-alive bit keeps its value")
+        public void testBit() {
+            Assertions.assertEquals(4, NetworkConstants.CLIENT_KEEPS_ALIVE);
         }
     }
 }

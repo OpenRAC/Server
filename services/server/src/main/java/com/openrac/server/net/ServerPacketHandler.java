@@ -210,7 +210,7 @@ public class ServerPacketHandler extends PacketHandler {
         }
 
         session = new Session(ctx.channel(), name, (features & NetworkConstants.CLIENT_RESUMES) != 0,
-                (features & NetworkConstants.CLIENT_SLOTS) != 0);
+                (features & NetworkConstants.CLIENT_SLOTS) != 0, (features & NetworkConstants.CLIENT_KEEPS_ALIVE) != 0);
 
         Log.info("Session " + session.getId() + " (" + name + ", version " + version + ") from " + ctx.channel().remoteAddress() + ".");
 
