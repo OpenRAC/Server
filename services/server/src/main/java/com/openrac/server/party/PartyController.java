@@ -125,9 +125,10 @@ public class PartyController {
      * Sends the session the parties it could join: oldest first, with room, of its game, not its own.
      * @param session The session asking.
      * @param family The session's game family.
+     * @param withAdverts Whether each listing ends with its host's advert.
      */
 
-    public static synchronized void list(Session session, String family) {
+    public static synchronized void list(Session session, String family, boolean withAdverts) {
         OutputBuffer listing = new OutputBuffer();
         int count = 0;
 
@@ -144,7 +145,8 @@ public class PartyController {
             // The count is one byte, so the list is cut off here.
             if (count == Constants.MAX_LISTED_PARTIES) break;
 
-            listing.append(party.serializeListing());
+            // Only clients that asked for adverts can read past the description.
+            listing.append(withAdverts ? party.serializeListingWithAdvert() : party.serializeListing());
             count++;
         }
 
@@ -154,6 +156,30 @@ public class PartyController {
         payload.append(listing);
 
         session.send(new PartyPacket(Opcodes.Party.LIST, payload));
+    }
+
+    /**
+     * Sets the bytes the host's party is listed with.
+     * @param session The session asking.
+     * @param advert The bytes, at most the advert limit.
+     */
+
+    public static synchronized void advert(Session session, byte[] advert) {
+        Party party = session.getParty();
+
+        // Only a party has a listing to describe.
+        if (party == null) {
+            session.send(new ErrorPacket(Opcodes.Error.NOT_IN_PARTY));
+            return;
+        }
+
+        // The host speaks for its party.
+        if (!party.isHost(session)) {
+            session.send(new ErrorPacket(Opcodes.Error.NOT_HOST));
+            return;
+        }
+
+        party.setAdvert(advert);
     }
 
     /**
@@ -371,7 +397,7 @@ public class PartyController {
 
         // The connection now knows this session by its old id.
         held.send(new HelloPacket(held.getId()));
-        held.send(new UdpPacket(held.getToken(), Constants.PORT, NetworkConstants.FEATURE_KICK | NetworkConstants.FEATURE_RESUME, held.getResumeToken()));
+        held.send(new UdpPacket(held.getToken(), Constants.PORT, Constants.FEATURES, held.getResumeToken()));
         held.send(new PartyPacket(Opcodes.Party.INFO, party.serialize()));
 
         for (Session member : party.getMembers()) if (member != held) member.send(new PartyPacket(held.getId(), true));

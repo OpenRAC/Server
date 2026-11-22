@@ -14,6 +14,10 @@ public class NetworkConstants {
 
     public static final int FEATURE_KICK = 1; // UDP offer's feature bit: the server takes KICK.
     public static final int FEATURE_RESUME = 2; // UDP offer's feature bit: the server takes RESUME.
+    public static final int FEATURE_ADVERT = 4; // UDP offer's feature bit: the server takes ADVERT.
+    public static final int FEATURE_RELAY = 8; // UDP offer's feature bit: the server takes RELAY.
+
+    public static final int LIST_ADVERTS = 1; // LIST request's flag bit: each listing ends with its advert.
 
     public static final int CLIENT_RESUMES = 1; // HELLO's client bit: this client comes back with RESUME.
 }

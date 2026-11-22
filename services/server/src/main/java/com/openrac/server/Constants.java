@@ -1,5 +1,6 @@
 package com.openrac.server;
 
+import com.openrac.net.NetworkConstants;
 import com.openrac.system.Environment;
 
 /**
@@ -16,10 +17,16 @@ public class Constants {
     public static final int HTTP_PORT = Environment.getInt("HTTP_PORT", 7771); // The mod set store.
 
     public static final int MAX_VERSION_LENGTH = 32;
+
+    // What the UDP offer says this server takes.
+    public static final int FEATURES = NetworkConstants.FEATURE_KICK | NetworkConstants.FEATURE_RESUME | NetworkConstants.FEATURE_ADVERT
+            | NetworkConstants.FEATURE_RELAY;
+
     public static final int MAX_NAME_LENGTH = 32;
     public static final int MAX_CHAT_LENGTH = 256;
     public static final int MAX_FAMILY_LENGTH = 32;
     public static final int MAX_DESCRIPTION_LENGTH = Environment.getInt("MAX_DESCRIPTION_LENGTH", 48);
+    public static final int MAX_ADVERT_LENGTH = Environment.getInt("MAX_ADVERT_LENGTH", 512); // Bytes a host may list its party with.
 
     public static final int MAX_PARTY_SIZE = Environment.getInt("MAX_PARTY_SIZE", 4); // Host included.
     public static final int MAX_LISTED_PARTIES = Environment.getInt("MAX_LISTED_PARTIES", 32); // Fits the count byte.
@@ -35,6 +42,8 @@ public class Constants {
     public static final int PARTY_PER_SECOND = Environment.getInt("PARTY_PER_SECOND", 1);
     public static final int DATA_BURST = Environment.getInt("DATA_BURST", 120); // 30 Hz state updates plus events.
     public static final int DATA_PER_SECOND = Environment.getInt("DATA_PER_SECOND", 60);
+    public static final int RELAY_BURST = Environment.getInt("RELAY_BURST", 240); // Every frame to each member, plus events.
+    public static final int RELAY_PER_SECOND = Environment.getInt("RELAY_PER_SECOND", 120);
     public static final int TIME_BURST = Environment.getInt("TIME_BURST", 5);
     public static final int TIME_PER_SECOND = Environment.getInt("TIME_PER_SECOND", 2);
 

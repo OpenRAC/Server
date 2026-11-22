@@ -11,6 +11,7 @@ import com.openrac.net.packets.out.ChatPacket;
 import com.openrac.net.packets.out.DataPacket;
 import com.openrac.net.packets.out.ErrorPacket;
 import com.openrac.net.packets.out.HelloPacket;
+import com.openrac.net.packets.out.RelayPacket;
 import com.openrac.net.packets.out.TimePacket;
 import com.openrac.net.packets.out.UdpPacket;
 import com.openrac.server.Clock;
@@ -43,6 +44,7 @@ public class ServerPacketHandler extends PacketHandler {
     private final RateLimit chatLimit = new RateLimit(Constants.CHAT_BURST, Constants.CHAT_PER_SECOND);
     private final RateLimit partyLimit = new RateLimit(Constants.PARTY_BURST, Constants.PARTY_PER_SECOND);
     private final RateLimit dataLimit = new RateLimit(Constants.DATA_BURST, Constants.DATA_PER_SECOND);
+    private final RateLimit relayLimit = new RateLimit(Constants.RELAY_BURST, Constants.RELAY_PER_SECOND);
     private final RateLimit timeLimit = new RateLimit(Constants.TIME_BURST, Constants.TIME_PER_SECOND);
     private final RateLimit strikeLimit = new RateLimit(Constants.STRIKE_BURST, Constants.STRIKES_FORGIVEN_PER_SECOND);
 
@@ -129,6 +131,7 @@ public class ServerPacketHandler extends PacketHandler {
             case PARTY -> handleParty(ctx, payload);
             case CHAT -> handleChat(ctx, payload);
             case DATA -> handleData(payload);
+            case RELAY -> handleRelay(payload);
             case TIME -> handleTime(payload);
 
             // Only the server reports errors.
@@ -149,6 +152,7 @@ public class ServerPacketHandler extends PacketHandler {
             case CHAT -> chatLimit.take();
             case PARTY -> partyLimit.take();
             case DATA -> dataLimit.take();
+            case RELAY -> relayLimit.take();
             case TIME -> timeLimit.take();
 
             // The greeting is once only, and server-only packets are rejected outright.
@@ -208,7 +212,7 @@ public class ServerPacketHandler extends PacketHandler {
         session.send(new HelloPacket(session.getId()));
 
         // Shipped clients read hello as it was, so UDP comes separately.
-        session.send(new UdpPacket(session.getToken(), Constants.PORT, NetworkConstants.FEATURE_KICK | NetworkConstants.FEATURE_RESUME, session.getResumeToken()));
+        session.send(new UdpPacket(session.getToken(), Constants.PORT, Constants.FEATURES, session.getResumeToken()));
     }
 
     /**
@@ -242,8 +246,20 @@ public class ServerPacketHandler extends PacketHandler {
             }
             case LIST -> {
                 String family = readFamily(ctx, payload);
+                int flags = payload.size() > 0 ? payload.readUnsignedByte() : 0; // Older clients stop at the family.
 
-                if (family != null) PartyController.list(session, orDefault(family));
+                if (family != null) PartyController.list(session, orDefault(family), (flags & NetworkConstants.LIST_ADVERTS) != 0);
+            }
+            case ADVERT -> {
+                byte[] advert = payload.readRemainingBytes();
+
+                // An advert past the limit only comes from a broken client.
+                if (advert.length > Constants.MAX_ADVERT_LENGTH) {
+                    reject(ctx, "sent an oversized advert");
+                    return;
+                }
+
+                PartyController.advert(session, advert);
             }
             case KICK -> PartyController.kick(session, payload.readInt());
             case HOST_CHANGED -> {
@@ -318,6 +334,26 @@ public class ServerPacketHandler extends PacketHandler {
         if (Log.isVerbose()) Log.verbose("Data from session " + session.getId() + " to " + target + " in party " + party.getCode() + ": " + data.length + " bytes.");
 
         party.forward(session, target, new DataPacket(session.getId(), data));
+    }
+
+    /**
+     * Relays game data from one member to another, or to every other, unread.
+     * @param payload The relay packet's payload.
+     */
+
+    private void handleRelay(InputBuffer payload) {
+        int target = payload.readInt();
+        byte[] data = payload.readRemainingBytes();
+
+        Party party = session.getParty();
+
+        // Data sent outside a party has nowhere to go.
+        if (party == null) return;
+
+        // Game data flows every frame, so only build the line when shown.
+        if (Log.isVerbose()) Log.verbose("Relay from session " + session.getId() + " to " + target + " in party " + party.getCode() + ": " + data.length + " bytes.");
+
+        party.relay(session, target, new RelayPacket(session.getId(), data));
     }
 
     /**

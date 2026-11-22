@@ -24,6 +24,7 @@ public class Party {
     private final String description;
     private final String family; // The host's game family: only its own family sees or joins it.
     private int epoch; // One more at each change of host.
+    private volatile byte[] advert = new byte[0]; // Opaque to the server, set by the host.
 
     private final List<Session> members = new CopyOnWriteArrayList<>();
     private final Set<Integer> kicked = new HashSet<>(); // Only touched under the controller's lock.
@@ -91,6 +92,26 @@ public class Party {
 
             // Broadcast reaches everyone, otherwise only the named member.
             if (target == NetworkConstants.BROADCAST || member.getId() == target) delivery.accept(member);
+        }
+    }
+
+    /**
+     * Relays game data between members, any of whom may send to any other.
+     * @param sender The member that sent the data.
+     * @param target A member's session id, or the broadcast target for every other member.
+     * @param packet The relay packet to deliver.
+     */
+
+    public void relay(Session sender, int target, OutgoingPacket packet) {
+        for (Session member : members) {
+            // The sender already has its own data.
+            if (member == sender) continue;
+
+            // Nothing reaches a member whose connection dropped.
+            if (member.isAway()) continue;
+
+            // Broadcast reaches everyone, otherwise only the named member.
+            if (target == NetworkConstants.BROADCAST || member.getId() == target) member.send(packet);
         }
     }
 
@@ -251,6 +272,15 @@ public class Party {
     }
 
     /**
+     * Replaces the bytes the party is listed with.
+     * @param advert The host's bytes, already within the limit.
+     */
+
+    public void setAdvert(byte[] advert) {
+        this.advert = advert;
+    }
+
+    /**
      * Writes the party as a party list shows it.
      * @return The code, the host's name, the member count, the size limit and the description.
      */
@@ -263,6 +293,23 @@ public class Party {
         buffer.writeUnsignedByte(members.size());
         buffer.writeUnsignedByte(Constants.MAX_PARTY_SIZE);
         buffer.writeString(description);
+
+        return buffer;
+    }
+
+    /**
+     * Writes the party as a party list shows it, followed by its advert.
+     * @return The listing, then the advert's length short and its bytes.
+     */
+
+    public OutputBuffer serializeListingWithAdvert() {
+        OutputBuffer buffer = serializeListing();
+
+        // One read, as the host may replace it meanwhile.
+        byte[] bytes = advert;
+
+        buffer.writeShort((short) bytes.length);
+        buffer.writeBytes(bytes);
 
         return buffer;
     }
