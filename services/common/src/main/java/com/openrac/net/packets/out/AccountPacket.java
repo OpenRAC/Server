@@ -10,16 +10,16 @@ import com.openrac.net.packets.model.OutgoingPacket;
 
 public class AccountPacket extends OutgoingPacket {
     /**
-     * An account opcode with no payload: LOGOUT.
+     * Writes the packet id and an account opcode, for the constructors below.
      * @param opcode The account opcode.
      */
 
-    public AccountPacket(Opcodes.Account opcode) {
+    private AccountPacket(Opcodes.Account opcode) {
         super(Packets.ACCOUNT.ordinal(), opcode.ordinal());
     }
 
     /**
-     * TOKEN from a client: the session token its hub login gave it.
+     * TOKEN to a server or LOGOUT to the hub, from a client: its session token.
      * @param opcode The account opcode.
      * @param token The session token.
      */

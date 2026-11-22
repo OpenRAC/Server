@@ -23,6 +23,7 @@ import com.openrac.server.hub.RegionController;
 import com.openrac.server.party.Party;
 import com.openrac.server.party.PartyController;
 import com.openrac.utils.Clock;
+import com.openrac.utils.Utils;
 import com.openrac.utils.logger.Log;
 
 import java.net.InetAddress;
@@ -207,7 +208,7 @@ public class ServerPacketHandler extends PacketHandler {
         int features = payload.size() > 0 ? payload.readUnsignedByte() : 0; // Older clients send none.
 
         // Blank or oversized fields only come from a broken client.
-        if (!isValid(version, Constants.MAX_VERSION_LENGTH) || !isValid(name, Constants.MAX_NAME_LENGTH)) {
+        if (!Utils.isValid(version, Constants.MAX_VERSION_LENGTH) || !Utils.isValid(name, Constants.MAX_NAME_LENGTH)) {
             reject(ctx, "sent an invalid hello");
             return;
         }
@@ -308,7 +309,7 @@ public class ServerPacketHandler extends PacketHandler {
         String message = payload.readString();
 
         // Blank or oversized messages only come from a broken client.
-        if (!isValid(message, Constants.MAX_CHAT_LENGTH)) {
+        if (!Utils.isValid(message, Constants.MAX_CHAT_LENGTH)) {
             reject(ctx, "sent an invalid chat message");
             return;
         }
@@ -380,7 +381,7 @@ public class ServerPacketHandler extends PacketHandler {
         int players = payload.readInt();
 
         // A listed region needs a name that fits and a real port.
-        if (!isValid(name, Constants.MAX_NAME_LENGTH) || port < 1 || port > 65_535) {
+        if (!Utils.isValid(name, Constants.MAX_NAME_LENGTH) || port < 1 || port > 65_535) {
             reject(ctx, "sent an invalid region");
             return;
         }
@@ -442,15 +443,5 @@ public class ServerPacketHandler extends PacketHandler {
         String trimmed = kept.toString().strip();
 
         return trimmed.substring(0, Math.min(trimmed.length(), Constants.MAX_DESCRIPTION_LENGTH));
-    }
-
-    /**
-     * @param text A string read from the client.
-     * @param maxLength The most characters it may have.
-     * @return Whether the string is neither blank nor too long.
-     */
-
-    private static boolean isValid(String text, int maxLength) {
-        return !text.isBlank() && text.length() <= maxLength;
     }
 }

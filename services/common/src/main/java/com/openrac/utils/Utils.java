@@ -33,4 +33,14 @@ public class Utils {
 
         return formatted.toString();
     }
+
+    /**
+     * @param text A string read from the wire.
+     * @param maxLength The most characters it may have.
+     * @return Whether the string is neither blank nor too long.
+     */
+
+    public static boolean isValid(String text, int maxLength) {
+        return !text.isBlank() && text.length() <= maxLength;
+    }
 }
