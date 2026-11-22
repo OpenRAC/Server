@@ -13,7 +13,9 @@ public enum Packets {
     ERROR,
     TIME,
     UDP,
-    RELAY;
+    RELAY,
+    REGIONS,
+    REGISTER;
 
     /**
      * Resolves a packet from its id.

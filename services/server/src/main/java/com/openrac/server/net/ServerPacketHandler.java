@@ -18,6 +18,7 @@ import com.openrac.server.Clock;
 import com.openrac.server.Constants;
 import com.openrac.server.Session;
 import com.openrac.server.SessionRegistry;
+import com.openrac.server.hub.RegionController;
 import com.openrac.server.limits.ConnectionLimit;
 import com.openrac.server.limits.RateLimit;
 import com.openrac.server.party.Party;
@@ -91,6 +92,7 @@ public class ServerPacketHandler extends PacketHandler {
         if (session != null && session.isOn(ctx.channel())) {
             // Datagrams naming a closed session are dropped until it comes back.
             SessionRegistry.remove(session);
+            RegionController.remove(session);
 
             PartyController.dropped(session, Clock.now());
         }
@@ -132,6 +134,8 @@ public class ServerPacketHandler extends PacketHandler {
             case CHAT -> handleChat(ctx, payload);
             case DATA -> handleData(payload);
             case RELAY -> handleRelay(payload);
+            case REGIONS -> RegionController.list(session);
+            case REGISTER -> handleRegister(ctx, payload);
             case TIME -> handleTime(payload);
 
             // Only the server reports errors.
@@ -153,6 +157,7 @@ public class ServerPacketHandler extends PacketHandler {
             case PARTY -> partyLimit.take();
             case DATA -> dataLimit.take();
             case RELAY -> relayLimit.take();
+            case REGIONS, REGISTER -> partyLimit.take();
             case TIME -> timeLimit.take();
 
             // The greeting is once only, and server-only packets are rejected outright.
@@ -203,7 +208,7 @@ public class ServerPacketHandler extends PacketHandler {
             return;
         }
 
-        session = new Session(ctx.channel(), name, (features & NetworkConstants.CLIENT_RESUMES) != 0);
+        session = new Session(ctx.channel(), name, (features & NetworkConstants.CLIENT_RESUMES) != 0, (features & NetworkConstants.CLIENT_SLOTS) != 0);
 
         Log.info("Session " + session.getId() + " (" + name + ", version " + version + ") from " + ctx.channel().remoteAddress() + ".");
 
@@ -246,7 +251,8 @@ public class ServerPacketHandler extends PacketHandler {
             }
             case LIST -> {
                 String family = readFamily(ctx, payload);
-                int flags = payload.size() > 0 ? payload.readUnsignedByte() : 0; // Older clients stop at the family.
+                // Older clients stop at the family.
+                int flags = payload.size() > 0 ? payload.readUnsignedByte() : 0;
 
                 if (family != null) PartyController.list(session, orDefault(family), (flags & NetworkConstants.LIST_ADVERTS) != 0);
             }
@@ -354,6 +360,29 @@ public class ServerPacketHandler extends PacketHandler {
         if (Log.isVerbose()) Log.verbose("Relay from session " + session.getId() + " to " + target + " in party " + party.getCode() + ": " + data.length + " bytes.");
 
         party.relay(session, target, new RelayPacket(session.getId(), data));
+    }
+
+    /**
+     * Lists or refreshes a region server that registers with this hub.
+     * @param ctx The channel handler context.
+     * @param payload The register packet's payload.
+     */
+
+    private void handleRegister(ChannelHandlerContext ctx, InputBuffer payload) {
+        String key = payload.readString();
+        String name = payload.readString().strip();
+        String host = payload.readString().strip();
+        int port = payload.readInt();
+        int players = payload.readInt();
+
+        // A region's name shows in lists, so it must fit.
+        if (!isValid(name, Constants.MAX_NAME_LENGTH) || port < 1 || port > 65_535) {
+            reject(ctx, "sent an invalid region");
+            return;
+        }
+
+        // A wrong key means another operator's region.
+        if (!RegionController.register(session, key, name, host, port, players)) reject(ctx, "sent a wrong region key");
     }
 
     /**

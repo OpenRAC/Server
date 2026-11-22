@@ -41,6 +41,7 @@ public class Session {
     private volatile long udpHeard; // System.nanoTime() of the last valid datagram.
 
     private final boolean resumes; // This client comes back with RESUME.
+    private final boolean readsSlots; // This client understands SLOTS.
     private volatile boolean away; // Its connection dropped and its slot waits for it.
     private volatile long awayAt; // Clock.now() of the drop.
     private volatile long heardAt = Clock.now(); // Clock.now() of the last packet or datagram.
@@ -50,13 +51,15 @@ public class Session {
      * @param channel The connection's channel.
      * @param name The player's display name.
      * @param resumes Whether the client said it comes back with RESUME.
+     * @param readsSlots Whether the client said it reads SLOTS.
      */
 
-    public Session(Channel channel, String name, boolean resumes) {
+    public Session(Channel channel, String name, boolean resumes, boolean readsSlots) {
         this.id = nextId.getAndIncrement();
         this.name = name;
         this.channel = channel;
         this.resumes = resumes;
+        this.readsSlots = readsSlots;
     }
 
     /**
@@ -156,6 +159,14 @@ public class Session {
 
     public boolean resumes() {
         return resumes;
+    }
+
+    /**
+     * @return Whether the client reads SLOTS.
+     */
+
+    public boolean readsSlots() {
+        return readsSlots;
     }
 
     /**

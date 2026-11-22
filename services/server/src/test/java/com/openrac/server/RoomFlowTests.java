@@ -10,11 +10,16 @@ import com.openrac.net.NetworkConstants;
 import com.openrac.net.packets.Opcodes;
 import com.openrac.net.packets.Packets;
 import com.openrac.net.packets.model.InputBuffer;
+import com.openrac.net.packets.out.HelloPacket;
 import com.openrac.net.packets.out.PartyPacket;
+import com.openrac.net.packets.out.RegionsPacket;
+import com.openrac.net.packets.out.RegisterPacket;
 import com.openrac.net.packets.out.RelayPacket;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Runs the pieces games with lobby rooms use on the real pipeline: relayed data between any
@@ -95,6 +100,52 @@ public class RoomFlowTests {
         return packet;
     }
 
+    /**
+     * Connects a player that reads SLOTS and says hello.
+     * @param name The display name.
+     * @return The greeted client.
+     */
+
+    private Client connectSlotted(String name) {
+        Client client = new Client();
+
+        clients.add(client);
+        client.send(new HelloPacket("0.1.0", name, NetworkConstants.CLIENT_SLOTS));
+        client.readGreeting();
+
+        return client;
+    }
+
+    /**
+     * Reads a SLOTS notice.
+     * @param client The client it was sent to.
+     * @return Each member's slot by session id.
+     */
+
+    private static Map<Integer, Integer> readSlots(Client client) {
+        InputBuffer payload = client.receiveParty(Opcodes.Party.SLOTS);
+        Map<Integer, Integer> slots = new HashMap<>();
+        int count = payload.readUnsignedByte();
+
+        for (int i = 0; i < count; i++) slots.put(payload.readInt(), payload.readUnsignedByte());
+
+        return slots;
+    }
+
+    /**
+     * Builds a create request for a game family.
+     * @param family The family.
+     * @return The request.
+     */
+
+    private static PartyPacket createRequest(String family) {
+        PartyPacket packet = new PartyPacket(Opcodes.Party.CREATE, "Room");
+
+        packet.writeString(family);
+
+        return packet;
+    }
+
     @Nested
     @DisplayName("Wire Tests")
     class WireTests {
@@ -113,6 +164,9 @@ public class RoomFlowTests {
         public void testOrdinals() {
             Assertions.assertEquals(7, Packets.RELAY.ordinal());
             Assertions.assertEquals(13, Opcodes.Party.ADVERT.ordinal());
+            Assertions.assertEquals(8, Packets.REGIONS.ordinal());
+            Assertions.assertEquals(9, Packets.REGISTER.ordinal());
+            Assertions.assertEquals(14, Opcodes.Party.SLOTS.ordinal());
         }
     }
 
@@ -249,6 +303,132 @@ public class RoomFlowTests {
             host.send(advertRequest(new byte[Constants.MAX_ADVERT_LENGTH + 1]));
 
             Assertions.assertFalse(host.channel.isActive());
+        }
+    }
+
+    @Nested
+    @DisplayName("Slot Tests")
+    class SlotTests {
+
+        @Test
+        @DisplayName("Members keep their slots, and a newcomer takes the lowest free one")
+        public void testSlots() {
+            Client host = connectSlotted("Ratchet");
+            Client first = connectSlotted("Clank");
+            Client second = connectSlotted("Qwark");
+
+            host.send(createRequest("rac3-pal-1"));
+
+            String code = host.receiveParty(Opcodes.Party.INFO).readString();
+
+            Assertions.assertEquals(Map.of(host.id, 0), readSlots(host));
+
+            for (Client joiner : List.of(first, second)) {
+                PartyPacket join = new PartyPacket(Opcodes.Party.JOIN, code);
+
+                join.writeString("rac3-pal-1");
+                joiner.send(join);
+            }
+
+            Assertions.assertEquals(1, readSlotsAfterJoin(first).get(first.id));
+            Assertions.assertEquals(2, readSlotsAfterJoin(second).get(second.id));
+
+            first.send(new PartyPacket(Opcodes.Party.LEAVE));
+
+            Client third = connectSlotted("Skrunch");
+            PartyPacket join = new PartyPacket(Opcodes.Party.JOIN, code);
+
+            join.writeString("rac3-pal-1");
+            third.send(join);
+
+            Map<Integer, Integer> slots = readSlotsAfterJoin(third);
+
+            Assertions.assertEquals(1, slots.get(third.id));
+            Assertions.assertEquals(2, slots.get(second.id));
+        }
+
+        @Test
+        @DisplayName("A family's own party size is what its listings say")
+        public void testFamilySize() {
+            Client host = connect("Ratchet");
+            Client viewer = connect("Clank");
+
+            host.send(createRequest("rac3-pal-1"));
+            host.receiveParty(Opcodes.Party.INFO);
+
+            PartyPacket list = new PartyPacket(Opcodes.Party.LIST, "rac3-pal-1");
+
+            viewer.send(list);
+
+            InputBuffer payload = viewer.receiveParty(Opcodes.Party.LIST);
+
+            Assertions.assertEquals(1, payload.readUnsignedByte());
+            payload.readString();
+            payload.readString();
+            payload.readUnsignedByte();
+            Assertions.assertEquals(8, payload.readUnsignedByte());
+        }
+
+        /**
+         * Skips a joiner's INFO and reads the SLOTS that follows it.
+         * @param joiner The client that joined.
+         * @return Each member's slot by session id.
+         */
+
+        private Map<Integer, Integer> readSlotsAfterJoin(Client joiner) {
+            joiner.receiveParty(Opcodes.Party.INFO);
+
+            return readSlots(joiner);
+        }
+    }
+
+    @Nested
+    @DisplayName("Region Tests")
+    class RegionTests {
+
+        /**
+         * Asks for the regions and reads them.
+         * @param client The client asking.
+         * @return Each region's name and port.
+         */
+
+        private Map<String, Integer> regions(Client client) {
+            client.send(new RegionsPacket("rac3-pal-1"));
+
+            InputBuffer payload = client.receive(Packets.REGIONS);
+            Map<String, Integer> found = new HashMap<>();
+            int count = payload.readUnsignedByte();
+
+            for (int i = 0; i < count; i++) {
+                String name = payload.readString();
+
+                payload.readString();
+                found.put(name, payload.readInt());
+                payload.readInt();
+            }
+
+            return found;
+        }
+
+        @Test
+        @DisplayName("A single process lists itself as a region")
+        public void testOwnRegion() {
+            Assertions.assertEquals(Constants.PORT, regions(connect("Ratchet")).get(Constants.REGION_NAME));
+        }
+
+        @Test
+        @DisplayName("A region server is listed while its connection lasts")
+        public void testRegistered() {
+            Client region = connect("region Polaris");
+            Client player = connect("Clank");
+
+            region.send(new RegisterPacket("", "Polaris", "polaris.example", 7800, 3));
+
+            Assertions.assertEquals(7800, regions(player).get("Polaris"));
+
+            region.channel.close();
+
+            Assertions.assertNull(regions(player).get("Polaris"));
         }
     }
 }

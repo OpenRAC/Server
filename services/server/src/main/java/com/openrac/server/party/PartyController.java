@@ -159,6 +159,18 @@ public class PartyController {
     }
 
     /**
+     * Tells the members that read slots which slot each member holds.
+     * @param party The party whose membership changed.
+     */
+
+    private static void sendSlots(Party party) {
+        PartyPacket packet = new PartyPacket(Opcodes.Party.SLOTS, party.serializeSlots());
+
+        // Shipped clients close on an unknown opcode.
+        for (Session member : party.getMembers()) if (member.readsSlots()) member.send(packet);
+    }
+
+    /**
      * Sets the bytes the host's party is listed with.
      * @param session The session asking.
      * @param advert The bytes, at most the advert limit.
@@ -198,6 +210,7 @@ public class PartyController {
         Log.info(describe(session) + " is hosting party " + party.getCode() + " (" + family + ").");
 
         session.send(new PartyPacket(Opcodes.Party.INFO, party.serialize()));
+        sendSlots(party);
     }
 
     /**
@@ -212,9 +225,10 @@ public class PartyController {
         party.add(session);
         session.setParty(party);
 
-        Log.info(describe(session) + " joined party " + party.getCode() + " (" + party.getMembers().size() + "/" + Constants.MAX_PARTY_SIZE + ").");
+        Log.info(describe(session) + " joined party " + party.getCode() + " (" + party.getMembers().size() + "/" + party.getSize() + ").");
 
         session.send(new PartyPacket(Opcodes.Party.INFO, party.serialize()));
+        sendSlots(party);
     }
 
     /**
@@ -248,6 +262,7 @@ public class PartyController {
 
             member.send(new PartyPacket(Opcodes.Party.KICKED));
             party.broadcast(new PartyPacket(Opcodes.Party.LEFT, member.getId()));
+            sendSlots(party);
 
             Log.info(describe(member) + " was removed from party " + party.getCode() + " by its host.");
             return;
@@ -278,6 +293,7 @@ public class PartyController {
         }
 
         party.broadcast(new PartyPacket(Opcodes.Party.LEFT, session.getId()));
+        sendSlots(party);
 
         Log.info(describe(session) + " left party " + party.getCode() + ".");
         return true;
@@ -399,6 +415,7 @@ public class PartyController {
         held.send(new HelloPacket(held.getId()));
         held.send(new UdpPacket(held.getToken(), Constants.PORT, Constants.FEATURES, held.getResumeToken()));
         held.send(new PartyPacket(Opcodes.Party.INFO, party.serialize()));
+        sendSlots(party);
 
         for (Session member : party.getMembers()) if (member != held) member.send(new PartyPacket(held.getId(), true));
 

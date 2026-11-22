@@ -23,7 +23,8 @@ public final class Opcodes {
         RESUME, // Client rejoins after a drop; the server tells members who went away and came back.
         KICK, // The host asks the server to remove a member.
         KICKED, // Server tells a member the host removed it.
-        ADVERT; // Host sets the opaque bytes party lists show with its party.
+        ADVERT, // Host sets the opaque bytes party lists show with its party.
+        SLOTS; // Server tells slot readers each member's stable slot.
 
         /**
          * Resolves a party opcode from its byte.

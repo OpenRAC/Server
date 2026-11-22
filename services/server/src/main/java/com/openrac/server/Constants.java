@@ -1,7 +1,11 @@
 package com.openrac.server;
 
 import com.openrac.net.NetworkConstants;
+import com.openrac.server.hub.Mode;
 import com.openrac.system.Environment;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Limits and defaults this server decides on its own. Most come from the environment
@@ -16,11 +20,19 @@ public class Constants {
     public static final int PORT = Environment.getInt("PORT", 7770);
     public static final int HTTP_PORT = Environment.getInt("HTTP_PORT", 7771); // The mod set store.
 
+    public static final Mode MODE = Mode.get(Environment.getString("MODE", "all")); // Hub, region or both.
+    public static final String REGION_NAME = Environment.getString("REGION_NAME", "Local"); // Shown in the region list.
+    public static final String REGION_HOST = Environment.getString("REGION_HOST", ""); // Empty: the address players reached.
+    public static final String HUB_ADDRESS = Environment.getString("HUB_ADDRESS", "127.0.0.1:7770"); // Where a region registers.
+    public static final String REGION_KEY = Environment.getString("REGION_KEY", ""); // Empty: any region may register.
+    public static final int REGION_REPORT_SECONDS = Environment.getInt("REGION_REPORT_SECONDS", 10);
+    public static final int MAX_REGIONS = 32; // Fits the count byte with room to spare.
+
     public static final int MAX_VERSION_LENGTH = 32;
 
     // What the UDP offer says this server takes.
     public static final int FEATURES = NetworkConstants.FEATURE_KICK | NetworkConstants.FEATURE_RESUME | NetworkConstants.FEATURE_ADVERT
-            | NetworkConstants.FEATURE_RELAY;
+            | NetworkConstants.FEATURE_RELAY | NetworkConstants.FEATURE_REGIONS;
 
     public static final int MAX_NAME_LENGTH = 32;
     public static final int MAX_CHAT_LENGTH = 256;
@@ -29,6 +41,10 @@ public class Constants {
     public static final int MAX_ADVERT_LENGTH = Environment.getInt("MAX_ADVERT_LENGTH", 512); // Bytes a host may list its party with.
 
     public static final int MAX_PARTY_SIZE = Environment.getInt("MAX_PARTY_SIZE", 4); // Host included.
+    public static final int MAX_SLOTS = 24; // The largest room a family may set.
+
+    // Party sizes by family, read from family:size pairs.
+    public static final Map<String, Integer> FAMILY_PARTY_SIZES = parseSizes(Environment.getString("FAMILY_PARTY_SIZES", "rac3-pal-1:8,rac3-ntsc-1:8"));
     public static final int MAX_LISTED_PARTIES = Environment.getInt("MAX_LISTED_PARTIES", 32); // Fits the count byte.
 
     // The game family of a request that names none: every client from before families is a
@@ -76,4 +92,34 @@ public class Constants {
     public static final int MODSET_CODE_LENGTH = 8; // 40 bits of the alphabet below.
     public static final int CODE_LENGTH = 6;
     public static final String CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // No 0, O, 1 or I, which read alike.
+
+    /**
+     * Reads the per-family party sizes.
+     * @param text Pairs of a family and its size, as "family:size,...".
+     * @return The sizes by family, each kept within the slot limit.
+     */
+
+    private static Map<String, Integer> parseSizes(String text) {
+        Map<String, Integer> sizes = new HashMap<>();
+
+        for (String pair : text.split(",")) {
+            String[] parts = pair.strip().split(":");
+
+            // Only a broken setting has a malformed pair.
+            if (parts.length != 2) continue;
+
+            sizes.put(parts[0].strip(), Math.max(1, Math.min(MAX_SLOTS, Integer.parseInt(parts[1].strip()))));
+        }
+
+        return sizes;
+    }
+
+    /**
+     * @param family A game family.
+     * @return How many players a party of that family holds, the host included.
+     */
+
+    public static int getPartySize(String family) {
+        return FAMILY_PARTY_SIZES.getOrDefault(family, MAX_PARTY_SIZE);
+    }
 }

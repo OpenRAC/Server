@@ -13,6 +13,8 @@ import io.netty.util.concurrent.Future;
 
 import com.openrac.server.http.HttpChannelInitializer;
 import com.openrac.server.http.ModSetStore;
+import com.openrac.server.hub.HubLink;
+import com.openrac.server.hub.Mode;
 import com.openrac.server.net.ServerChannelInitializer;
 import com.openrac.server.net.ServerDatagramHandler;
 import com.openrac.server.party.PartyController;
@@ -113,7 +115,10 @@ public class Server {
 
         sweeper.scheduleWithFixedDelay(() -> PartyController.sweep(Clock.now()), 1, 1, TimeUnit.SECONDS);
 
-        Log.notice(Constants.NAME + " is listening on " + host + ":" + port + " (TCP and UDP).");
+        // Only a region server reports to a hub.
+        if (Constants.MODE == Mode.REGION) new HubLink(workerGroup, Constants.HUB_ADDRESS).start();
+
+        Log.notice(Constants.NAME + " is listening on " + host + ":" + port + " (TCP and UDP), as " + Constants.MODE.getName() + ".");
     }
 
     /**
