@@ -490,4 +490,12 @@ public class PartyController {
     public static synchronized boolean exists(String code) {
         return parties.containsKey(code);
     }
+
+    /**
+     * @return How many parties are open.
+     */
+
+    public static synchronized int getCount() {
+        return parties.size();
+    }
 }

@@ -20,19 +20,19 @@ public class Constants {
     public static final int PORT = Environment.getInt("PORT", 7770);
     public static final int HTTP_PORT = Environment.getInt("HTTP_PORT", 7771); // The mod set store.
 
-    public static final Mode MODE = Mode.get(Environment.getString("MODE", Mode.ALL.getName())); // Hub, region or both.
+    public static final Mode MODE = Mode.get(Environment.getString("MODE", Mode.REGION.getName())); // A region, or a region and its hub.
     public static final String REGION_NAME = Environment.getString("REGION_NAME", "Local"); // Shown in the region list.
-    public static final String REGION_HOST = Environment.getString("REGION_HOST", ""); // Empty: the address players reached.
-    public static final String HUB_ADDRESS = Environment.getString("HUB_ADDRESS", "127.0.0.1:7770"); // Where a region registers.
-    public static final String REGION_KEY = Environment.getString("REGION_KEY", ""); // Empty: any region may register.
-    public static final int REGION_REPORT_SECONDS = Environment.getInt("REGION_REPORT_SECONDS", 10);
-    public static final int MAX_REGIONS = 32; // Fits the count byte with room to spare.
+    public static final String REGION_HOST = Environment.getString("REGION_HOST", ""); // Empty: the address the hub sees.
+    public static final String HUB_ADDRESS = Environment.getString("HUB_ADDRESS", "hub.openrac.dev:7177"); // Where a region registers.
+    public static final String REGION_KEY = Environment.getString("REGION_KEY", ""); // Sent to the hub, which may ask for one.
+    public static final int REGION_REPORT_SECONDS = Environment.getInt("REGION_REPORT_SECONDS", 5); // The heartbeat to the hub.
 
     public static final int MAX_VERSION_LENGTH = 32;
+    public static final int MAX_TOKEN_LENGTH = 64; // A hub session token is 43.
 
     // What the UDP offer says this server takes.
     public static final int FEATURES = NetworkConstants.FEATURE_KICK | NetworkConstants.FEATURE_RESUME | NetworkConstants.FEATURE_ADVERT
-            | NetworkConstants.FEATURE_RELAY | NetworkConstants.FEATURE_REGIONS;
+            | NetworkConstants.FEATURE_RELAY;
 
     public static final int MAX_NAME_LENGTH = 32;
     public static final int MAX_CHAT_LENGTH = 256;

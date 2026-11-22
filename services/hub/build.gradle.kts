@@ -31,6 +31,8 @@ tasks {
         archiveBaseName.set("openrac-hub")
         archiveVersion.set("1.0.0")
         archiveClassifier.set("")
+        // The merge only sees every copy when duplicates reach it.
+        duplicatesStrategy = DuplicatesStrategy.INCLUDE
         mergeServiceFiles()
     }
 

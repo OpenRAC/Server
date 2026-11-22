@@ -12,10 +12,7 @@ import com.openrac.net.packets.Packets;
 import com.openrac.net.packets.model.InputBuffer;
 import com.openrac.net.packets.out.HelloPacket;
 import com.openrac.net.packets.out.PartyPacket;
-import com.openrac.net.packets.out.RegionsPacket;
-import com.openrac.net.packets.out.RegisterPacket;
 import com.openrac.net.packets.out.RelayPacket;
-import com.openrac.server.hub.Mode;
 import com.openrac.server.party.PartyController;
 import com.openrac.utils.Clock;
 
@@ -206,26 +203,6 @@ public class RoomFlowTests {
             Assertions.assertEquals(8, Packets.REGIONS.ordinal());
             Assertions.assertEquals(9, Packets.REGISTER.ordinal());
             Assertions.assertEquals(14, Opcodes.Party.SLOTS.ordinal());
-        }
-    }
-
-    @Nested
-    @DisplayName("Mode Tests")
-    class ModeTests {
-
-        @Test
-        @DisplayName("A mode reads in any case and an unknown one means all")
-        public void testModes() {
-            Assertions.assertEquals(Mode.HUB, Mode.get("hub"));
-            Assertions.assertEquals(Mode.REGION, Mode.get(" Region "));
-            Assertions.assertEquals(Mode.ALL, Mode.get("ALL"));
-            Assertions.assertEquals(Mode.ALL, Mode.get("nonsense"));
-        }
-
-        @Test
-        @DisplayName("A mode's name reads back to the same mode")
-        public void testNames() {
-            for (Mode mode : Mode.values()) Assertions.assertEquals(mode, Mode.get(mode.getName()));
         }
     }
 
@@ -432,56 +409,6 @@ public class RoomFlowTests {
             joiner.receiveParty(Opcodes.Party.INFO);
 
             return readSlots(joiner);
-        }
-    }
-
-    @Nested
-    @DisplayName("Region Tests")
-    class RegionTests {
-
-        /**
-         * Asks for the regions and reads them.
-         * @param client The client asking.
-         * @return Each region's name and port.
-         */
-
-        private Map<String, Integer> regions(Client client) {
-            client.send(new RegionsPacket("rac3-pal-1"));
-
-            InputBuffer payload = client.receive(Packets.REGIONS);
-            Map<String, Integer> found = new HashMap<>();
-            int count = payload.readUnsignedByte();
-
-            for (int i = 0; i < count; i++) {
-                String name = payload.readString();
-
-                payload.readString();
-                found.put(name, payload.readInt());
-                payload.readInt();
-            }
-
-            return found;
-        }
-
-        @Test
-        @DisplayName("A single process lists itself as a region")
-        public void testOwnRegion() {
-            Assertions.assertEquals(Constants.PORT, regions(connect("Ratchet")).get(Constants.REGION_NAME));
-        }
-
-        @Test
-        @DisplayName("A region server is listed while its connection lasts")
-        public void testRegistered() {
-            Client region = connect("region Polaris");
-            Client player = connect("Clank");
-
-            region.send(new RegisterPacket("", "Polaris", "polaris.example", 7800, 3, "Box"));
-
-            Assertions.assertEquals(7800, regions(player).get("Polaris"));
-
-            region.channel.close();
-
-            Assertions.assertNull(regions(player).get("Polaris"));
         }
     }
 

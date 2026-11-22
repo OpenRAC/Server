@@ -34,6 +34,8 @@ public class Session {
     // Read from other members' threads, written under the party lock.
     private volatile Party party;
 
+    private volatile long accountId; // The hub's account behind the player, 0 for none.
+
     private final long token = random.nextLong(); // Proves a datagram came from this session's client.
     private final long resumeToken = random.nextLong(); // Proves a RESUME came from this session's client.
     private final RateLimit stateLimit = new RateLimit(Constants.DATA_BURST, Constants.DATA_PER_SECOND); // Datagram loop only.
@@ -238,6 +240,14 @@ public class Session {
     }
 
     /**
+     * @return The hub's account the player proved it holds, 0 for none.
+     */
+
+    public long getAccountId() {
+        return accountId;
+    }
+
+    /**
      * @return The secret token the client puts in each datagram.
      */
 
@@ -268,6 +278,14 @@ public class Session {
 
     public void setParty(Party party) {
         this.party = party;
+    }
+
+    /**
+     * @param accountId The account the hub vouched for.
+     */
+
+    public void setAccountId(long accountId) {
+        this.accountId = accountId;
     }
 
     /**

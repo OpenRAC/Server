@@ -19,7 +19,7 @@ import com.openrac.net.packets.out.UdpPacket;
 import com.openrac.server.Constants;
 import com.openrac.server.Session;
 import com.openrac.server.SessionRegistry;
-import com.openrac.server.hub.RegionController;
+import com.openrac.server.hub.HubController;
 import com.openrac.server.party.Party;
 import com.openrac.server.party.PartyController;
 import com.openrac.utils.Clock;
@@ -93,7 +93,6 @@ public class ServerPacketHandler extends PacketHandler {
         if (session != null && session.isOn(ctx.channel())) {
             // Datagrams naming a closed session are dropped until it comes back.
             SessionRegistry.remove(session);
-            RegionController.remove(session);
 
             PartyController.dropped(session, Clock.now());
         }
@@ -135,8 +134,7 @@ public class ServerPacketHandler extends PacketHandler {
             case CHAT -> handleChat(ctx, payload);
             case DATA -> handleData(payload);
             case RELAY -> handleRelay(payload);
-            case REGIONS -> RegionController.list(session);
-            case REGISTER -> handleRegister(ctx, payload);
+            case ACCOUNT -> handleAccount(ctx, payload);
             case TIME -> handleTime(payload);
 
             // Only the server reports errors.
@@ -146,7 +144,7 @@ public class ServerPacketHandler extends PacketHandler {
             case UDP -> reject(ctx, "sent a UDP packet");
 
             // The hub's packets, and the UI descriptions this server does not take.
-            case UI, HUB, SERVERS, ACCOUNT -> reject(ctx, "sent " + packet + ", which only the hub takes");
+            case UI, REGIONS, REGISTER, HUB, SERVERS -> reject(ctx, "sent " + packet + ", which only the hub takes");
         }
     }
 
@@ -161,12 +159,12 @@ public class ServerPacketHandler extends PacketHandler {
             case PARTY -> partyLimit.take();
             case DATA -> dataLimit.take();
             case RELAY -> relayLimit.take();
-            // Region traffic is as rare as party requests.
-            case REGIONS, REGISTER -> partyLimit.take();
+            // A token is proved once, like a party request.
+            case ACCOUNT -> partyLimit.take();
             case TIME -> timeLimit.take();
 
             // The greeting is once only, and server-only packets are rejected outright.
-            case HELLO, ERROR, UDP, UI, HUB, SERVERS, ACCOUNT -> true;
+            case HELLO, ERROR, UDP, UI, REGIONS, REGISTER, HUB, SERVERS -> true;
         };
     }
 
@@ -368,26 +366,27 @@ public class ServerPacketHandler extends PacketHandler {
     }
 
     /**
-     * Lists or refreshes a region server that registers with this hub.
+     * Proves a player's hub login: the hub says whose session the token is.
      * @param ctx The channel handler context.
-     * @param payload The register packet's payload.
+     * @param payload The account packet's payload.
      */
 
-    private void handleRegister(ChannelHandlerContext ctx, InputBuffer payload) {
-        String key = payload.readString();
-        String name = payload.readString().strip();
-        String host = payload.readString().strip();
-        int port = payload.readInt();
-        int players = payload.readInt();
-
-        // A listed region needs a name that fits and a real port.
-        if (!Utils.isValid(name, Constants.MAX_NAME_LENGTH) || port < 1 || port > 65_535) {
-            reject(ctx, "sent an invalid region");
+    private void handleAccount(ChannelHandlerContext ctx, InputBuffer payload) {
+        // Logins happen at the hub, so a server only checks tokens.
+        if (Opcodes.Account.get(payload.readUnsignedByte()) != Opcodes.Account.TOKEN) {
+            reject(ctx, "sent an account opcode only the hub takes");
             return;
         }
 
-        // A wrong key means another operator's region.
-        if (!RegionController.register(session, key, name, host, port, players)) reject(ctx, "sent a wrong region key");
+        String token = payload.readString();
+
+        // A token past the limit is no token the hub gave out.
+        if (!Utils.isValid(token, Constants.MAX_TOKEN_LENGTH)) {
+            reject(ctx, "sent an invalid token");
+            return;
+        }
+
+        HubController.verify(session, token);
     }
 
     /**

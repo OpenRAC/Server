@@ -79,7 +79,7 @@ public class HubPacketHandler extends PacketHandler {
         // A refused connection never counted against its address.
         if (address != null) ConnectionLimit.close(address);
 
-        // Clients leave nothing behind; their watch ends with the channel.
+        // A client's watch ends with its channel, so only servers leave.
         if (server != null) ServerController.remove(server);
 
         ctx.fireChannelInactive();
@@ -100,7 +100,7 @@ public class HubPacketHandler extends PacketHandler {
             return;
         }
 
-        // Servers report on a schedule; only clients can flood.
+        // Servers report on a schedule, so only clients can flood.
         if (guest && !requestLimit.take()) return;
 
         switch (packet) {
@@ -244,7 +244,7 @@ public class HubPacketHandler extends PacketHandler {
         // Servers have no use for the list.
         if (!isGuest(ctx, Packets.SERVERS)) return;
 
-        // Only WATCH comes from a client; the family is for later filters.
+        // Only WATCH comes from a client. The family waits for filters.
         if (Opcodes.Servers.get(payload.readUnsignedByte()) != Opcodes.Servers.WATCH) {
             reject(ctx, "sent an invalid servers opcode");
             return;
@@ -277,7 +277,7 @@ public class HubPacketHandler extends PacketHandler {
                 AccountController.logout(ctx.channel(), token);
             }
 
-            // TOKEN goes to a game server; LOGGED_IN only the hub sends.
+            // TOKEN belongs to game servers, LOGGED_IN to the hub.
             case null, default -> reject(ctx, "sent an invalid account opcode");
         }
     }
