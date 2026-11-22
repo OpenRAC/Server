@@ -4,8 +4,7 @@ import com.openrac.net.packets.Packets;
 import com.openrac.net.packets.model.OutgoingPacket;
 
 /**
- * A region server telling its hub it is there, and how many players it has: sent on connecting and
- * then every few seconds.
+ * A game server telling the hub it is there: the first packet on its link, before any STATUS.
  */
 
 public class RegisterPacket extends OutgoingPacket {
@@ -16,9 +15,10 @@ public class RegisterPacket extends OutgoingPacket {
      * @param host The address players reach it on, empty for the one the hub sees.
      * @param port The region's port.
      * @param players How many players it has now.
+     * @param server The server's own name, which tells one region's servers apart.
      */
 
-    public RegisterPacket(String key, String name, String host, int port, int players) {
+    public RegisterPacket(String key, String name, String host, int port, int players, String server) {
         super(Packets.REGISTER.ordinal());
 
         writeString(key);
@@ -26,5 +26,6 @@ public class RegisterPacket extends OutgoingPacket {
         writeString(host);
         writeInt(port);
         writeInt(players);
+        writeString(server);
     }
 }

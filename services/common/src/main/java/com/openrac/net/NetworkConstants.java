@@ -17,6 +17,7 @@ public class NetworkConstants {
     public static final int FEATURE_ADVERT = 4; // UDP offer's feature bit: the server takes ADVERT.
     public static final int FEATURE_RELAY = 8; // UDP offer's feature bit: the server takes RELAY.
     public static final int FEATURE_REGIONS = 16; // UDP offer's feature bit: the server answers REGIONS.
+    public static final int FEATURE_SERVERS = 64; // UDP offer's feature bit: the hub streams SERVERS.
 
     public static final int LIST_ADVERTS = 1; // LIST request's flag bit: each listing ends with its advert.
 

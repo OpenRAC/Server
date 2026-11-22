@@ -475,7 +475,7 @@ public class RoomFlowTests {
             Client region = connect("region Polaris");
             Client player = connect("Clank");
 
-            region.send(new RegisterPacket("", "Polaris", "polaris.example", 7800, 3));
+            region.send(new RegisterPacket("", "Polaris", "polaris.example", 7800, 3, "Box"));
 
             Assertions.assertEquals(7800, regions(player).get("Polaris"));
 

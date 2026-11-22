@@ -110,7 +110,7 @@ public class HubLink {
         }
 
         link.writeAndFlush(new RegisterPacket(Constants.REGION_KEY, Constants.REGION_NAME, Constants.REGION_HOST, Constants.PORT,
-                SessionRegistry.getCount()));
+                SessionRegistry.getCount(), Constants.NAME));
     }
 
     /**

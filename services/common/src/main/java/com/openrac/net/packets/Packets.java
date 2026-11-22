@@ -15,7 +15,11 @@ public enum Packets {
     UDP,
     RELAY,
     REGIONS,
-    REGISTER;
+    REGISTER,
+    UI, // Claimed by the UI descriptions, Server PR #4.
+    HUB,
+    SERVERS,
+    ACCOUNT;
 
     /**
      * Resolves a packet from its id.
