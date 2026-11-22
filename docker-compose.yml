@@ -1,13 +1,52 @@
-# The server with Docker Compose: docker compose up -d (and docker compose logs -f).
-# A .env beside this file, if there is one, overrides .env.defaults inside the container.
+# A whole OpenRAC network on one machine: PostgreSQL, the hub and one game server.
+#   docker compose up -d          (docker compose logs -f, docker compose down)
+# A .env beside this file overrides .env.defaults in both containers, and sets the values below:
+# set DATABASE_PASSWORD, and REGION_HOST to this machine's public address for players outside it.
 services:
-  server:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: openrac
+      POSTGRES_USER: openrac
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-openrac}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openrac -d openrac"]
+      interval: 5s
+      retries: 12
+    volumes:
+      - postgres:/var/lib/postgresql
+
+  hub:
     build: .
     image: openrac-server
+    command: ["hub.jar"]
     restart: unless-stopped
     env_file:
       - path: .env
         required: false
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/openrac
+      DATABASE_USER: openrac
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-openrac}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "7177:7177/tcp"
+
+  server:
+    image: openrac-server
+    command: ["server.jar"]
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      MODE: region
+      HUB_ADDRESS: hub:7177
+    depends_on:
+      - hub
     ports:
       - "7770:7770/tcp"
       - "7770:7770/udp"
@@ -16,5 +55,7 @@ services:
       - modsets:/app/data
 
 volumes:
+  # The accounts, kept across rebuilds.
+  postgres:
   # The launcher's mod sets, kept across rebuilds.
   modsets:
