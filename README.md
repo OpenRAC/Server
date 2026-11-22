@@ -6,7 +6,7 @@ forwards their traffic. The host's game is authoritative, and the server never r
 it forwards.
 
 In its current state it serves only Ratchet & Clank 1 multiplayer mods (and possibly Ratchet &
-Clank 2). The same backend is meant to serve the Ratchet & Clank 3 and 4 decompilations later.
+Clank 2). Ratchet & Clank 3's online play uses its game rooms (`RELAY`, `ADVERT`), and Ratchet & Clank 4 is meant to follow.
 
 ## Layout
 
@@ -74,7 +74,7 @@ datagrams), and with `DEBUG_LEVEL=verbose` also every game data packet and UDP s
 ## Limits
 
 Each connection has a rate per packet kind: a short burst, then a steady rate (chat 1 a second,
-party requests (including `LIST`) 1 a second, game data 60 a second, clock requests 2 a second; see `.env.defaults`).
+party requests (including `LIST` and `ADVERT`) 1 a second, game data 60 a second, relayed data 120 a second, clock requests 2 a second; see `.env.defaults`).
 A packet over its rate is dropped and counts as a strike; strikes are forgiven over time, and a
 connection that keeps flooding is closed. One address may hold 8 connections, and a connection
 that has not said hello within 10 seconds is closed.
@@ -104,6 +104,8 @@ Names and versions are 1 to 32 characters, chat messages 1 to 256. Parties hold 
 | 5 | `TIME` | client → server | client time long (ms) |
 | | | server → client | the client time echoed, server time long (ms since the server started) |
 | 6 | `UDP` | server → client | UDP token long, UDP port int, feature bits byte, resume token long; sent right after the `HELLO` answer |
+| 7 | `RELAY` | client → server | target id int (0 every other member), opaque bytes to the end of the frame |
+| | | server → client | sender id int, opaque bytes |
 
 `PARTY` opcodes:
 
@@ -117,14 +119,15 @@ Names and versions are 1 to 32 characters, chat messages 1 to 256. Parties hold 
 | 5 | `LEFT` | server → members | id int |
 | 6 | `END` | server → members | none; the host left, so the party is gone |
 | 7 | `FIND` | client → server | the game family string, optional; joins the oldest party of that family with room, else hosts a new one; answered with `INFO`; the party it creates has no description |
-| 8 | `LIST` | client → server | the game family string, optional; allowed in or out of a party, answered with `LIST` |
-| | | server → client | count byte (at most 32), then per party: code string, host name string, member count byte, max party size byte, description string |
+| 8 | `LIST` | client → server | the game family string, optional, then a flags byte, optional (bit 0: with adverts); allowed in or out of a party, answered with `LIST` |
+| | | server → client | count byte (at most 32), then per party: code string, host name string, member count byte, max party size byte, description string; with adverts, the advert's length short and its bytes |
 | 9 | `HOST_CHANGED` | client → server | decline byte, count byte, then id int per member; from the host only (else `NOT_HOST`). 0: these may follow it, the first choice first, replacing the last list. 1: a new host says it cannot, and the next one is asked |
 | | | server → members | new host id int, epoch int (one more at each change) |
 | 10 | `RESUME` | client → server | party code string, session id int, resume token long; asked after `HELLO` on a new connection (below) |
 | | | server → members | id int, byte: 0 its connection dropped and its slot waits, 1 it came back |
 | 11 | `KICK` | client → server | member id int; from the host only (else `NOT_HOST`). The member gets `KICKED`, the others `LEFT`. Its connection stays and its code still works, but `FIND` no longer puts it in that party. An id that is not a member's does nothing |
 | 12 | `KICKED` | server → member | none; the host removed it from the party |
+| 13 | `ADVERT` | client → server | opaque bytes to the end of the frame, at most `MAX_ADVERT_LENGTH` (512); from the host only (else `NOT_HOST`, or `NOT_IN_PARTY` outside a party). Replaces the bytes `LIST` shows with the party when asked for adverts |
 
 The description is sanitised on the server: only printable ASCII (0x20 to 0x7E) is kept, the ends are
 trimmed and it is cut to 48 characters. `LIST` names the parties of the requester's game family with room
@@ -136,7 +139,7 @@ It shares the party-request rate, which allows a request every 3 seconds.
 4 `NOT_HOST`, 5 `RESUME_REFUSED`, 6 `OTHER_GAME` (followed by the party's game family string).
 
 `UDP`'s feature bits say which requests this server takes, since an unknown one closes the
-connection: bit 0 (1) `KICK`, bit 1 (2) `RESUME`. A client from before them stops reading at the port.
+connection: bit 0 (1) `KICK`, bit 1 (2) `RESUME`, bit 2 (4) `ADVERT`, bit 3 (8) `RELAY`. A client from before them stops reading at the port.
 
 A client that can come back says so with a byte after its name in `HELLO` (bit 0). Its connection
 dropping is then no leaving: the others get `RESUME` with 0, and the session waits for
@@ -153,6 +156,13 @@ of the host's last `HOST_CHANGED` list who is there hosts, everyone is told with
 the old host stays as a member whose slot waits out the rest of its time: if it comes back, `INFO`
 tells it the host and epoch of the party it finds. A host that leaves on purpose is followed at once.
 A party whose host named nobody, or with nobody left to follow, ends with `END`.
+
+`RELAY` routing: any member may send to any other. Target 0 sends it to every other member, a
+session id to that member only. It is for games whose players all talk to each other (Up Your
+Arsenal's game rooms), has its own rate (`RELAY_BURST`, `RELAY_PER_SECOND`) and never goes over UDP.
+
+An advert is what a host lists its party with, beside the description: game settings a lobby
+shows, opaque to the server. A party starts with none (length 0).
 
 `DATA` routing: from a member, the server sends it to the host and ignores the target. From the
 host, target 0 sends it to every other member, and a session id sends it to that member only.
