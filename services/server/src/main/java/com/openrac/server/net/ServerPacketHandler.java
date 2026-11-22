@@ -3,6 +3,8 @@ package com.openrac.server.net;
 import io.netty.channel.ChannelHandlerContext;
 
 import com.openrac.net.NetworkConstants;
+import com.openrac.net.limits.ConnectionLimit;
+import com.openrac.net.limits.RateLimit;
 import com.openrac.net.netty.handlers.PacketHandler;
 import com.openrac.net.packets.Opcodes;
 import com.openrac.net.packets.Packets;
@@ -14,15 +16,13 @@ import com.openrac.net.packets.out.HelloPacket;
 import com.openrac.net.packets.out.RelayPacket;
 import com.openrac.net.packets.out.TimePacket;
 import com.openrac.net.packets.out.UdpPacket;
-import com.openrac.server.Clock;
 import com.openrac.server.Constants;
 import com.openrac.server.Session;
 import com.openrac.server.SessionRegistry;
 import com.openrac.server.hub.RegionController;
-import com.openrac.server.limits.ConnectionLimit;
-import com.openrac.server.limits.RateLimit;
 import com.openrac.server.party.Party;
 import com.openrac.server.party.PartyController;
+import com.openrac.utils.Clock;
 import com.openrac.utils.logger.Log;
 
 import java.net.InetAddress;
@@ -60,7 +60,7 @@ public class ServerPacketHandler extends PacketHandler {
     public void channelActive(ChannelHandlerContext ctx) {
         // Only network connections have an address to count against.
         if (ctx.channel().remoteAddress() instanceof InetSocketAddress remote) {
-            if (!ConnectionLimit.open(remote.getAddress())) {
+            if (!ConnectionLimit.open(remote.getAddress(), Constants.MAX_CONNECTIONS_PER_ADDRESS)) {
                 reject(ctx, "has too many connections open");
                 return;
             }

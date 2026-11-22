@@ -1,4 +1,4 @@
-package com.openrac.server;
+package com.openrac.utils;
 
 /**
  * The server's clock, which every player stamps game data against. It counts from start-up on the

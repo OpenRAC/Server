@@ -16,7 +16,7 @@ import com.openrac.net.packets.out.DataPacket;
 import com.openrac.net.packets.out.HelloPacket;
 import com.openrac.net.packets.out.PartyPacket;
 import com.openrac.net.packets.out.TimePacket;
-import com.openrac.server.limits.ConnectionLimit;
+import com.openrac.net.limits.ConnectionLimit;
 import com.openrac.server.party.PartyController;
 
 import java.net.InetAddress;
@@ -798,13 +798,13 @@ public class PartyFlowTests {
         public void testConnectionsPerAddress() throws UnknownHostException {
             InetAddress address = InetAddress.getByName("192.0.2.7");
 
-            for (int i = 0; i < Constants.MAX_CONNECTIONS_PER_ADDRESS; i++) Assertions.assertTrue(ConnectionLimit.open(address));
+            for (int i = 0; i < Constants.MAX_CONNECTIONS_PER_ADDRESS; i++) Assertions.assertTrue(ConnectionLimit.open(address, Constants.MAX_CONNECTIONS_PER_ADDRESS));
 
-            Assertions.assertFalse(ConnectionLimit.open(address));
+            Assertions.assertFalse(ConnectionLimit.open(address, Constants.MAX_CONNECTIONS_PER_ADDRESS));
 
             // Closing one frees a place for the next.
             ConnectionLimit.close(address);
-            Assertions.assertTrue(ConnectionLimit.open(address));
+            Assertions.assertTrue(ConnectionLimit.open(address, Constants.MAX_CONNECTIONS_PER_ADDRESS));
 
             for (int i = 0; i < Constants.MAX_CONNECTIONS_PER_ADDRESS; i++) ConnectionLimit.close(address);
         }

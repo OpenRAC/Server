@@ -14,7 +14,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 
 import com.openrac.server.Constants;
-import com.openrac.server.limits.ConnectionLimit;
+import com.openrac.net.limits.ConnectionLimit;
 import com.openrac.utils.logger.Log;
 
 import java.net.InetAddress;
@@ -52,7 +52,7 @@ public class ModSetHandler extends SimpleChannelInboundHandler<FullHttpRequest> 
 
     @Override
     public void channelActive(ChannelHandlerContext context) {
-        counted = ConnectionLimit.open(address(context));
+        counted = ConnectionLimit.open(address(context), Constants.MAX_CONNECTIONS_PER_ADDRESS);
 
         // Over the limit, nothing is answered.
         if (!counted) {
