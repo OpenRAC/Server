@@ -23,6 +23,7 @@ import com.openrac.utils.Clock;
 import com.openrac.utils.Utils;
 import com.openrac.utils.logger.Log;
 
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.util.concurrent.TimeUnit;
@@ -185,8 +186,8 @@ public class HubPacketHandler extends PacketHandler {
             return;
         }
 
-        // A server on this machine leaves players the hub's own address.
-        if (host.isEmpty() && ctx.channel().remoteAddress() instanceof InetSocketAddress remote && !remote.getAddress().isLoopbackAddress())
+        // A server on the hub's own network leaves players the hub's address.
+        if (host.isEmpty() && ctx.channel().remoteAddress() instanceof InetSocketAddress remote && !isPrivate(remote.getAddress()))
             host = remote.getAddress().getHostAddress();
 
         server = ServerController.add(ctx.channel(), region, name, host, port, players, Clock.now());
@@ -292,6 +293,18 @@ public class HubPacketHandler extends PacketHandler {
         Log.warning(ctx.channel().remoteAddress() + " was refused as a server: " + reason + ".");
 
         ctx.writeAndFlush(new ErrorPacket(reason)).addListener(ChannelFutureListener.CLOSE);
+    }
+
+    /**
+     * @param address Where a server connected from.
+     * @return Whether it is this machine or a private network: loopback, LAN, link-local or IPv6 ULA.
+     */
+
+    private static boolean isPrivate(InetAddress address) {
+        // IPv6 unique local addresses (fc00::/7) have no Java check of their own.
+        boolean uniqueLocal = address instanceof Inet6Address && (address.getAddress()[0] & 0xFE) == 0xFC;
+
+        return address.isLoopbackAddress() || address.isSiteLocalAddress() || address.isLinkLocalAddress() || uniqueLocal;
     }
 
     /**
