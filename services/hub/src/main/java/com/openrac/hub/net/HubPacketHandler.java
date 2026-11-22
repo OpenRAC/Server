@@ -54,6 +54,7 @@ public class HubPacketHandler extends PacketHandler {
     public void channelActive(ChannelHandlerContext ctx) {
         // Only network connections have an address to count against.
         if (ctx.channel().remoteAddress() instanceof InetSocketAddress remote) {
+            // One machine cannot exhaust the hub with sockets.
             if (!ConnectionLimit.open(remote.getAddress(), Constants.MAX_CONNECTIONS_PER_ADDRESS)) {
                 reject(ctx, "has too many connections open");
                 return;
@@ -64,6 +65,7 @@ public class HubPacketHandler extends PacketHandler {
 
         // A connection that never introduces itself would hold a socket for nothing.
         ctx.executor().schedule(() -> {
+            // Still a stranger and still open when the deadline comes.
             if (!isKnown() && ctx.channel().isActive()) reject(ctx, "did not say hello or register in time");
         }, Constants.HELLO_TIMEOUT_SECONDS, TimeUnit.SECONDS);
 
@@ -109,6 +111,7 @@ public class HubPacketHandler extends PacketHandler {
             case REGISTER -> handleRegister(ctx, payload);
             case HUB -> handleHub(ctx, payload);
             case REGIONS -> {
+                // A server asking for the list is closed by the check.
                 if (isGuest(ctx, packet)) ctx.writeAndFlush(ServerController.getRegionsPacket());
             }
             case SERVERS -> handleServers(ctx, payload);
