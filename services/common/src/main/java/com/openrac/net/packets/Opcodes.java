@@ -58,7 +58,8 @@ public final class Opcodes {
         WRONG_PASSWORD, // The account exists and the password is not its own.
         INVALID_ACCOUNT, // The name or password breaks the hub's rules.
         SESSION_INVALID, // The session token is unknown, expired or ended.
-        TRY_LATER; // Too many attempts, or the hub cannot answer now.
+        TRY_LATER, // Too many attempts, or the hub cannot answer now.
+        NOT_LOGGED_IN; // Writing stats needs an account login on this connection.
 
         /**
          * Resolves an error reason from its byte.
@@ -80,7 +81,8 @@ public final class Opcodes {
         STATUS, // Server heartbeat with its players and parties.
         CLOSING, // Server is shutting down, so the hub stops listing it.
         VERIFY, // Server asks who a player's session token belongs to.
-        VERIFIED; // Hub answers VERIFY with the account, or none.
+        VERIFIED, // Hub answers VERIFY with the account, or none.
+        RESULT; // Server reports a finished game for the history and stats.
 
         /**
          * Resolves a hub opcode from its byte.
@@ -131,6 +133,31 @@ public final class Opcodes {
          */
 
         public static Account get(int id) {
+            return Opcodes.get(values(), id);
+        }
+    }
+
+    /**
+     * Opcodes of the STATS packet: a player's totals and the game's own ladders, kept by the hub.
+     * Each LADDER and CAREER opcode answers one of the game's Medius stats requests.
+     */
+
+    public enum Stats {
+        TOTALS, // A player's games, wins, kills, deaths and score in a family.
+        LADDER_WRITE, // Client stores its own ladder values (LADDER_STATS_WRITE).
+        LADDER_READ, // An account's ladder values (LADDER_STATS_READ).
+        LADDER_PAGE, // A page of the ladder sorted by one value (LADDER_PAGE).
+        LADDER_POSITION, // Where an account stands on the ladder (LADDER_POSITION).
+        CAREER_WRITE, // Client stores its own career bytes (CAREER_STATS_UPLOAD).
+        CAREER_READ; // An account's career bytes, as account info shows them.
+
+        /**
+         * Resolves a stats opcode from its byte.
+         * @param id The opcode byte read from the wire.
+         * @return The matching opcode, or null if the byte is out of range.
+         */
+
+        public static Stats get(int id) {
             return Opcodes.get(values(), id);
         }
     }

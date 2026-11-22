@@ -14,6 +14,7 @@ import com.openrac.net.datagrams.OutgoingDatagram;
 import com.openrac.net.netty.PacketChannelInitializer;
 import com.openrac.net.packets.Opcodes;
 import com.openrac.net.packets.Packets;
+import com.openrac.net.packets.model.GameResult;
 import com.openrac.net.packets.model.InputBuffer;
 import com.openrac.net.packets.model.OutgoingPacket;
 import com.openrac.net.packets.model.OutputBuffer;
@@ -30,6 +31,7 @@ import com.openrac.net.packets.out.TimePacket;
 import com.openrac.net.packets.out.UdpPacket;
 
 import java.nio.ByteBuffer;
+import java.util.List;
 
 /**
  * Sends every packet through the real pipeline's encoders and back through its decoders.
@@ -389,6 +391,9 @@ public class PacketCodecTests {
             Assertions.assertEquals(11, Packets.HUB.ordinal());
             Assertions.assertEquals(12, Packets.SERVERS.ordinal());
             Assertions.assertEquals(13, Packets.ACCOUNT.ordinal());
+            Assertions.assertEquals(14, Packets.STATS.ordinal());
+            Assertions.assertEquals(5, Opcodes.Hub.RESULT.ordinal());
+            Assertions.assertEquals(13, Opcodes.Error.NOT_LOGGED_IN.ordinal());
             Assertions.assertEquals(7, Opcodes.Error.REGION_KEY.ordinal());
             Assertions.assertEquals(12, Opcodes.Error.TRY_LATER.ordinal());
         }
@@ -437,6 +442,20 @@ public class PacketCodecTests {
             Assertions.assertEquals("Ratchet", payload.readString());
             Assertions.assertEquals("abc", payload.readString());
             Assertions.assertEquals(1, payload.readUnsignedByte());
+        }
+
+        @Test
+        @DisplayName("A game result survives the round trip, players included")
+        public void testResult() {
+            GameResult.Player ratchet = new GameResult.Player(7L, "Ratchet", 0, 12, 3, 1200, true);
+            GameResult.Player guest = new GameResult.Player(0L, "Guest", 1, 3, 12, 300, false);
+            GameResult result = new GameResult("rac3-pal-1", "Siege", 2, 41, 600, 0, List.of(ratchet, guest));
+
+            InputBuffer payload = roundTrip(new HubPacket(Opcodes.Hub.RESULT, result.serialize()), Packets.HUB);
+
+            Assertions.assertEquals(Opcodes.Hub.RESULT, Opcodes.Hub.get(payload.readUnsignedByte()));
+            Assertions.assertEquals(result, GameResult.read(payload, 8));
+            Assertions.assertEquals(0, payload.size());
         }
     }
 }

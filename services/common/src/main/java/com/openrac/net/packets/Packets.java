@@ -19,7 +19,8 @@ public enum Packets {
     UI, // Claimed by the UI descriptions, Server PR #4.
     HUB,
     SERVERS,
-    ACCOUNT;
+    ACCOUNT,
+    STATS;
 
     /**
      * Resolves a packet from its id.

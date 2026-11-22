@@ -144,7 +144,7 @@ public class ServerPacketHandler extends PacketHandler {
             case UDP -> reject(ctx, "sent a UDP packet");
 
             // The hub's packets, and the UI descriptions this server does not take.
-            case UI, REGIONS, REGISTER, HUB, SERVERS -> reject(ctx, "sent " + packet + ", which only the hub takes");
+            case UI, REGIONS, REGISTER, HUB, SERVERS, STATS -> reject(ctx, "sent " + packet + ", which only the hub takes");
         }
     }
 
@@ -164,7 +164,7 @@ public class ServerPacketHandler extends PacketHandler {
             case TIME -> timeLimit.take();
 
             // The greeting is once only, and server-only packets are rejected outright.
-            case HELLO, ERROR, UDP, UI, REGIONS, REGISTER, HUB, SERVERS -> true;
+            case HELLO, ERROR, UDP, UI, REGIONS, REGISTER, HUB, SERVERS, STATS -> true;
         };
     }
 
