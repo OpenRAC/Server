@@ -165,7 +165,7 @@ public class Session {
      * @return Whether the client reads SLOTS.
      */
 
-    public boolean readsSlots() {
+    public boolean canReadSlots() {
         return readsSlots;
     }
 

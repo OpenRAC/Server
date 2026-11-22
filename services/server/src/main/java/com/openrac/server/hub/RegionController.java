@@ -72,7 +72,7 @@ public class RegionController {
         OutputBuffer listing = new OutputBuffer();
         int count = 0;
 
-        // Single-process mode lists the hub's own lobbies first.
+        // A hub-only process has no lobbies of its own.
         if (Constants.MODE != Mode.HUB) {
             listing.append(new Region(Constants.REGION_NAME, Constants.REGION_HOST, Constants.PORT, SessionRegistry.getCount()).serialize());
             count++;

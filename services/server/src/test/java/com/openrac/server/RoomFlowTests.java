@@ -15,6 +15,7 @@ import com.openrac.net.packets.out.PartyPacket;
 import com.openrac.net.packets.out.RegionsPacket;
 import com.openrac.net.packets.out.RegisterPacket;
 import com.openrac.net.packets.out.RelayPacket;
+import com.openrac.server.hub.Mode;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -146,6 +147,21 @@ public class RoomFlowTests {
         return packet;
     }
 
+    /**
+     * Builds a join request for a game family.
+     * @param code The join code.
+     * @param family The family.
+     * @return The request.
+     */
+
+    private static PartyPacket joinRequest(String code, String family) {
+        PartyPacket packet = new PartyPacket(Opcodes.Party.JOIN, code);
+
+        packet.writeString(family);
+
+        return packet;
+    }
+
     @Nested
     @DisplayName("Wire Tests")
     class WireTests {
@@ -167,6 +183,26 @@ public class RoomFlowTests {
             Assertions.assertEquals(8, Packets.REGIONS.ordinal());
             Assertions.assertEquals(9, Packets.REGISTER.ordinal());
             Assertions.assertEquals(14, Opcodes.Party.SLOTS.ordinal());
+        }
+    }
+
+    @Nested
+    @DisplayName("Mode Tests")
+    class ModeTests {
+
+        @Test
+        @DisplayName("A mode reads in any case and an unknown one means all")
+        public void testModes() {
+            Assertions.assertEquals(Mode.HUB, Mode.get("hub"));
+            Assertions.assertEquals(Mode.REGION, Mode.get(" Region "));
+            Assertions.assertEquals(Mode.ALL, Mode.get("ALL"));
+            Assertions.assertEquals(Mode.ALL, Mode.get("nonsense"));
+        }
+
+        @Test
+        @DisplayName("A mode's name reads back to the same mode")
+        public void testNames() {
+            for (Mode mode : Mode.values()) Assertions.assertEquals(mode, Mode.get(mode.getName()));
         }
     }
 
@@ -324,10 +360,7 @@ public class RoomFlowTests {
             Assertions.assertEquals(Map.of(host.id, 0), readSlots(host));
 
             for (Client joiner : List.of(first, second)) {
-                PartyPacket join = new PartyPacket(Opcodes.Party.JOIN, code);
-
-                join.writeString("rac3-pal-1");
-                joiner.send(join);
+                joiner.send(joinRequest(code, "rac3-pal-1"));
             }
 
             Assertions.assertEquals(1, readSlotsAfterJoin(first).get(first.id));
@@ -336,10 +369,7 @@ public class RoomFlowTests {
             first.send(new PartyPacket(Opcodes.Party.LEAVE));
 
             Client third = connectSlotted("Skrunch");
-            PartyPacket join = new PartyPacket(Opcodes.Party.JOIN, code);
-
-            join.writeString("rac3-pal-1");
-            third.send(join);
+            third.send(joinRequest(code, "rac3-pal-1"));
 
             Map<Integer, Integer> slots = readSlotsAfterJoin(third);
 

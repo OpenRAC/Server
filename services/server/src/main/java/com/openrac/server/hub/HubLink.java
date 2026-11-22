@@ -2,8 +2,8 @@ package com.openrac.server.hub;
 
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelFutureListener;
+import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.EventLoopGroup;
@@ -109,7 +109,8 @@ public class HubLink {
             return;
         }
 
-        link.writeAndFlush(new RegisterPacket(Constants.REGION_KEY, Constants.REGION_NAME, Constants.REGION_HOST, Constants.PORT, SessionRegistry.getCount()));
+        link.writeAndFlush(new RegisterPacket(Constants.REGION_KEY, Constants.REGION_NAME, Constants.REGION_HOST, Constants.PORT,
+                SessionRegistry.getCount()));
     }
 
     /**

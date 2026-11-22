@@ -167,7 +167,7 @@ public class PartyController {
         PartyPacket packet = new PartyPacket(Opcodes.Party.SLOTS, party.serializeSlots());
 
         // Shipped clients close on an unknown opcode.
-        for (Session member : party.getMembers()) if (member.readsSlots()) member.send(packet);
+        for (Session member : party.getMembers()) if (member.canReadSlots()) member.send(packet);
     }
 
     /**

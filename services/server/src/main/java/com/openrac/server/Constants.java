@@ -20,7 +20,7 @@ public class Constants {
     public static final int PORT = Environment.getInt("PORT", 7770);
     public static final int HTTP_PORT = Environment.getInt("HTTP_PORT", 7771); // The mod set store.
 
-    public static final Mode MODE = Mode.get(Environment.getString("MODE", "all")); // Hub, region or both.
+    public static final Mode MODE = Mode.get(Environment.getString("MODE", Mode.ALL.getName())); // Hub, region or both.
     public static final String REGION_NAME = Environment.getString("REGION_NAME", "Local"); // Shown in the region list.
     public static final String REGION_HOST = Environment.getString("REGION_HOST", ""); // Empty: the address players reached.
     public static final String HUB_ADDRESS = Environment.getString("HUB_ADDRESS", "127.0.0.1:7770"); // Where a region registers.
@@ -43,8 +43,6 @@ public class Constants {
     public static final int MAX_PARTY_SIZE = Environment.getInt("MAX_PARTY_SIZE", 4); // Host included.
     public static final int MAX_SLOTS = 24; // The largest room a family may set.
 
-    // Party sizes by family, read from family:size pairs.
-    public static final Map<String, Integer> FAMILY_PARTY_SIZES = parseSizes(Environment.getString("FAMILY_PARTY_SIZES", "rac3-pal-1:8,rac3-ntsc-1:8"));
     public static final int MAX_LISTED_PARTIES = Environment.getInt("MAX_LISTED_PARTIES", 32); // Fits the count byte.
 
     // The game family of a request that names none: every client from before families is a
@@ -93,6 +91,10 @@ public class Constants {
     public static final int CODE_LENGTH = 6;
     public static final String CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // No 0, O, 1 or I, which read alike.
 
+    private static final String DEFAULT_FAMILY_SIZES = "rac3-pal-1:8,rac3-ntsc-1:8"; // Up Your Arsenal shows 8.
+
+    private static final Map<String, Integer> familyPartySizes = parseSizes(Environment.getString("FAMILY_PARTY_SIZES", DEFAULT_FAMILY_SIZES));
+
     /**
      * Reads the per-family party sizes.
      * @param text Pairs of a family and its size, as "family:size,...".
@@ -120,6 +122,6 @@ public class Constants {
      */
 
     public static int getPartySize(String family) {
-        return FAMILY_PARTY_SIZES.getOrDefault(family, MAX_PARTY_SIZE);
+        return familyPartySizes.getOrDefault(family, MAX_PARTY_SIZE);
     }
 }

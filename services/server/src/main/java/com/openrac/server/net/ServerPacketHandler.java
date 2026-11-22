@@ -157,6 +157,7 @@ public class ServerPacketHandler extends PacketHandler {
             case PARTY -> partyLimit.take();
             case DATA -> dataLimit.take();
             case RELAY -> relayLimit.take();
+            // Region traffic is as rare as party requests.
             case REGIONS, REGISTER -> partyLimit.take();
             case TIME -> timeLimit.take();
 
@@ -208,7 +209,8 @@ public class ServerPacketHandler extends PacketHandler {
             return;
         }
 
-        session = new Session(ctx.channel(), name, (features & NetworkConstants.CLIENT_RESUMES) != 0, (features & NetworkConstants.CLIENT_SLOTS) != 0);
+        session = new Session(ctx.channel(), name, (features & NetworkConstants.CLIENT_RESUMES) != 0,
+                (features & NetworkConstants.CLIENT_SLOTS) != 0);
 
         Log.info("Session " + session.getId() + " (" + name + ", version " + version + ") from " + ctx.channel().remoteAddress() + ".");
 
@@ -251,8 +253,7 @@ public class ServerPacketHandler extends PacketHandler {
             }
             case LIST -> {
                 String family = readFamily(ctx, payload);
-                // Older clients stop at the family.
-                int flags = payload.size() > 0 ? payload.readUnsignedByte() : 0;
+                int flags = payload.size() > 0 ? payload.readUnsignedByte() : 0; // Older clients stop at the family.
 
                 if (family != null) PartyController.list(session, orDefault(family), (flags & NetworkConstants.LIST_ADVERTS) != 0);
             }
@@ -375,7 +376,7 @@ public class ServerPacketHandler extends PacketHandler {
         int port = payload.readInt();
         int players = payload.readInt();
 
-        // A region's name shows in lists, so it must fit.
+        // A listed region needs a name that fits and a real port.
         if (!isValid(name, Constants.MAX_NAME_LENGTH) || port < 1 || port > 65_535) {
             reject(ctx, "sent an invalid region");
             return;
