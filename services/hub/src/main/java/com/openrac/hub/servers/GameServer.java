@@ -74,6 +74,14 @@ public class GameServer {
     }
 
     /**
+     * @return Its own name, which tells one region's servers apart.
+     */
+
+    public String getName() {
+        return name;
+    }
+
+    /**
      * @return The region players pick it by.
      */
 

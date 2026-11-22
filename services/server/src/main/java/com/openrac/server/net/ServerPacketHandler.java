@@ -410,7 +410,7 @@ public class ServerPacketHandler extends PacketHandler {
         String family = payload.size() > 0 ? payload.readString() : "";
 
         // A family is compared, never shown, so anything but short printable ASCII is a broken client.
-        if (family.length() > Constants.MAX_FAMILY_LENGTH || !family.chars().allMatch(c -> c > 0x20 && c <= 0x7E)) {
+        if (!family.isEmpty() && !Utils.isWord(family, Constants.MAX_FAMILY_LENGTH)) {
             reject(ctx, "sent an invalid game family");
             return null;
         }

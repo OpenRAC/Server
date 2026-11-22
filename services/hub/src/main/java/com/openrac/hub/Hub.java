@@ -10,10 +10,13 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.util.concurrent.Future;
 
 import com.openrac.hub.accounts.AccountController;
-import com.openrac.hub.accounts.Database;
 import com.openrac.hub.accounts.PostgresAccountStore;
+import com.openrac.hub.database.Database;
+import com.openrac.hub.database.Sql;
 import com.openrac.hub.net.HubChannelInitializer;
 import com.openrac.hub.servers.ServerController;
+import com.openrac.hub.stats.PostgresStatsStore;
+import com.openrac.hub.stats.StatsController;
 import com.openrac.system.Environment;
 import com.openrac.utils.Clock;
 import com.openrac.utils.logger.Log;
@@ -74,11 +77,15 @@ public class Hub {
     public void start(String host, int port) throws InterruptedException {
         Log.info("Initializing " + Constants.NAME + " " + Constants.VERSION + "...");
 
-        // Without a database the accounts stay in memory, gone on restart.
-        if (Constants.DATABASE_URL.isBlank()) Log.notice("No DATABASE_URL: accounts are kept in memory only.");
+        // Without a database accounts and stats stay in memory, gone on restart.
+        if (Constants.DATABASE_URL.isBlank()) Log.notice("No DATABASE_URL: accounts and stats are kept in memory only.");
         else {
             database = new Database(Constants.DATABASE_URL, Constants.DATABASE_USER, Constants.DATABASE_PASSWORD, Constants.DATABASE_POOL_SIZE);
-            AccountController.setStore(new PostgresAccountStore(database.getPool()));
+
+            Sql sql = new Sql(database.getPool());
+
+            AccountController.setStore(new PostgresAccountStore(sql));
+            StatsController.setStore(new PostgresStatsStore(sql));
         }
 
         channel = new ServerBootstrap()

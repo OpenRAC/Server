@@ -9,21 +9,27 @@ import org.junit.jupiter.api.Test;
 
 import com.openrac.hub.accounts.AccountController;
 import com.openrac.hub.accounts.MemoryAccountStore;
+import com.openrac.hub.stats.MemoryStatsStore;
+import com.openrac.hub.stats.StatsController;
 import com.openrac.hub.servers.ServerController;
 import com.openrac.net.NetworkConstants;
 import com.openrac.net.packets.Opcodes;
 import com.openrac.net.packets.Packets;
+import com.openrac.net.packets.model.GameResult;
 import com.openrac.net.packets.model.InputBuffer;
+import com.openrac.net.packets.model.OutputBuffer;
 import com.openrac.net.packets.out.AccountPacket;
 import com.openrac.net.packets.out.HubPacket;
 import com.openrac.net.packets.out.PartyPacket;
 import com.openrac.net.packets.out.RegionsPacket;
 import com.openrac.net.packets.out.RegisterPacket;
 import com.openrac.net.packets.out.ServersPacket;
+import com.openrac.net.packets.out.StatsPacket;
 import com.openrac.utils.Clock;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 
@@ -36,13 +42,14 @@ public class HubFlowTests {
     private final List<Peer> peers = new ArrayList<>();
 
     /**
-     * Gives each test empty accounts, worked on the calling thread.
+     * Gives each test empty accounts and stats, worked on the calling thread.
      */
 
     @BeforeEach
     public void resetAccounts() {
         AccountController.setStore(new MemoryAccountStore());
-        AccountController.setExecutor(Runnable::run);
+        StatsController.setStore(new MemoryStatsStore());
+        Background.setExecutor(Runnable::run);
     }
 
     /**
@@ -101,6 +108,24 @@ public class HubFlowTests {
         }
 
         return found;
+    }
+
+    /**
+     * Logs in and reads the answer.
+     * @param guest The client logging in.
+     * @param name The account name.
+     * @param password The password.
+     * @return The LOGGED_IN payload after its opcode.
+     */
+
+    private static InputBuffer login(Peer guest, String name, String password) {
+        guest.send(new AccountPacket(name, password));
+
+        InputBuffer payload = guest.receive(Packets.ACCOUNT);
+
+        Assertions.assertEquals(Opcodes.Account.LOGGED_IN, Opcodes.Account.get(payload.readUnsignedByte()));
+
+        return payload;
     }
 
     @Nested
@@ -256,24 +281,6 @@ public class HubFlowTests {
     @DisplayName("Account Tests")
     class AccountTests {
 
-        /**
-         * Logs in and reads the answer.
-         * @param guest The client logging in.
-         * @param name The account name.
-         * @param password The password.
-         * @return The LOGGED_IN payload after its opcode.
-         */
-
-        private InputBuffer login(Peer guest, String name, String password) {
-            guest.send(new AccountPacket(name, password));
-
-            InputBuffer payload = guest.receive(Packets.ACCOUNT);
-
-            Assertions.assertEquals(Opcodes.Account.LOGGED_IN, Opcodes.Account.get(payload.readUnsignedByte()));
-
-            return payload;
-        }
-
         @Test
         @DisplayName("A first login registers, a later one logs in in any case")
         public void testRegisterThenLogin() {
@@ -339,4 +346,223 @@ public class HubFlowTests {
             Assertions.assertEquals(0L, gone.readLong());
         }
     }
+
+    @Nested
+    @DisplayName("Stats Tests")
+    class StatsTests {
+
+        /**
+         * Logs a new player in.
+         * @param name The account name.
+         * @return The client and its account id.
+         */
+
+        private Player player(String name) {
+            Peer peer = guest(name);
+
+            return new Player(peer, login(peer, name, "lombax").readLong());
+        }
+
+        /**
+         * Sends a stats request and reads the answer.
+         * @param peer The client asking.
+         * @param opcode The stats opcode.
+         * @param fields The request's fields after the family.
+         * @return The answer's payload after its opcode.
+         */
+
+        private InputBuffer ask(Peer peer, Opcodes.Stats opcode, OutputBuffer fields) {
+            OutputBuffer request = new OutputBuffer();
+
+            request.writeString("rac3-pal-1");
+            request.append(fields);
+            peer.send(new StatsPacket(opcode, request));
+
+            InputBuffer payload = peer.receive(Packets.STATS);
+
+            Assertions.assertEquals(opcode, Opcodes.Stats.get(payload.readUnsignedByte()));
+
+            return payload;
+        }
+
+        /**
+         * Writes a player's ladder values.
+         * @param player The player.
+         * @param values Its values.
+         */
+
+        private void writeLadder(Player player, int... values) {
+            OutputBuffer fields = new OutputBuffer();
+
+            fields.writeInt(0);
+            fields.writeUnsignedByte(values.length);
+
+            for (int value : values) fields.writeInt(value);
+
+            ask(player.peer(), Opcodes.Stats.LADDER_WRITE, fields);
+        }
+
+        @Test
+        @DisplayName("A reported game adds to its players' totals, guests left out")
+        public void testResult() {
+            Player ratchet = player("Ratchet");
+            Peer server = connect();
+
+            server.register("Polaris", 7800);
+
+            GameResult.Player winner = new GameResult.Player(ratchet.id(), "Ratchet", 0, 12, 3, 1200, true);
+            GameResult.Player guest = new GameResult.Player(0L, "Guest", 1, 3, 12, 300, false);
+
+            server.send(new HubPacket(Opcodes.Hub.RESULT, new GameResult("rac3-pal-1", "Siege", 2, 41, 600, 0, List.of(winner, guest)).serialize()));
+            server.send(new HubPacket(Opcodes.Hub.RESULT, new GameResult("rac3-pal-1", "Siege", 2, 41, 600, 1, List.of(winner)).serialize()));
+
+            OutputBuffer fields = new OutputBuffer();
+
+            fields.writeLong(ratchet.id());
+
+            InputBuffer totals = ask(ratchet.peer(), Opcodes.Stats.TOTALS, fields);
+
+            Assertions.assertEquals(ratchet.id(), totals.readLong());
+            Assertions.assertEquals("rac3-pal-1", totals.readString());
+            Assertions.assertEquals(2, totals.readInt());
+            Assertions.assertEquals(2, totals.readInt());
+            Assertions.assertEquals(24, totals.readInt());
+            Assertions.assertEquals(6, totals.readInt());
+            Assertions.assertEquals(2400L, totals.readLong());
+        }
+
+        @Test
+        @DisplayName("Writing stats needs a login, and a bad sort index closes")
+        public void testRefused() {
+            Peer anonymous = guest("Clank");
+            OutputBuffer write = new OutputBuffer();
+
+            write.writeString("rac3-pal-1");
+            write.writeInt(0);
+            write.writeUnsignedByte(1);
+            write.writeInt(5);
+            anonymous.send(new StatsPacket(Opcodes.Stats.LADDER_WRITE, write));
+
+            Assertions.assertEquals(Opcodes.Error.NOT_LOGGED_IN, anonymous.receiveError());
+
+            OutputBuffer page = new OutputBuffer();
+
+            page.writeString("rac3-pal-1");
+            page.writeInt(0);
+            page.writeUnsignedByte(Constants.MAX_LADDER_STATS);
+            page.writeUnsignedByte(1);
+            page.writeInt(1);
+            page.writeUnsignedByte(10);
+            anonymous.send(new StatsPacket(Opcodes.Stats.LADDER_PAGE, page));
+
+            Assertions.assertFalse(anonymous.channel.isOpen());
+        }
+
+        @Test
+        @DisplayName("The ladder sorts by the asked value, ties sharing a position")
+        public void testLadder() {
+            Player ratchet = player("Ratchet");
+            Player clank = player("Clank");
+            Player qwark = player("Qwark");
+
+            writeLadder(ratchet, 1, 50);
+            writeLadder(clank, 2, 80);
+            writeLadder(qwark, 3, 50);
+
+            OutputBuffer request = new OutputBuffer();
+
+            request.writeInt(0);
+            request.writeUnsignedByte(1);
+            request.writeUnsignedByte(1);
+            request.writeInt(1);
+            request.writeUnsignedByte(10);
+
+            InputBuffer page = ask(ratchet.peer(), Opcodes.Stats.LADDER_PAGE, request);
+
+            Assertions.assertEquals(3, page.readInt());
+            Assertions.assertEquals(3, page.readUnsignedByte());
+
+            int[] positions = new int[3];
+            long[] ids = new long[3];
+
+            for (int i = 0; i < 3; i++) {
+                positions[i] = page.readInt();
+                ids[i] = page.readLong();
+                page.readString();
+
+                int count = page.readUnsignedByte();
+
+                for (int j = 0; j < count; j++) page.readInt();
+            }
+
+            Assertions.assertArrayEquals(new int[] { 1, 2, 2 }, positions);
+            Assertions.assertArrayEquals(new long[] { clank.id(), ratchet.id(), qwark.id() }, ids);
+
+            OutputBuffer where = new OutputBuffer();
+
+            where.writeLong(qwark.id());
+            where.writeInt(0);
+            where.writeUnsignedByte(1);
+            where.writeUnsignedByte(1);
+
+            InputBuffer position = ask(ratchet.peer(), Opcodes.Stats.LADDER_POSITION, where);
+
+            Assertions.assertEquals(qwark.id(), position.readLong());
+            Assertions.assertEquals(2, position.readInt());
+            Assertions.assertEquals(3, position.readInt());
+        }
+
+        @Test
+        @DisplayName("Ladder values and career bytes read back, and none read as empty")
+        public void testReadBack() {
+            Player ratchet = player("Ratchet");
+
+            writeLadder(ratchet, 7, 8, 9);
+
+            OutputBuffer read = new OutputBuffer();
+
+            read.writeLong(ratchet.id());
+            read.writeInt(0);
+
+            InputBuffer values = ask(ratchet.peer(), Opcodes.Stats.LADDER_READ, read);
+
+            Assertions.assertEquals(ratchet.id(), values.readLong());
+            Assertions.assertEquals(0, values.readInt());
+            Assertions.assertEquals(3, values.readUnsignedByte());
+            Assertions.assertEquals(7, values.readInt());
+
+            OutputBuffer career = new OutputBuffer();
+
+            career.writeBytes(HexFormat.of().parseHex("0102ff"));
+            ask(ratchet.peer(), Opcodes.Stats.CAREER_WRITE, career);
+
+            OutputBuffer readCareer = new OutputBuffer();
+
+            readCareer.writeLong(ratchet.id());
+
+            InputBuffer bytes = ask(ratchet.peer(), Opcodes.Stats.CAREER_READ, readCareer);
+
+            Assertions.assertEquals(ratchet.id(), bytes.readLong());
+            Assertions.assertArrayEquals(HexFormat.of().parseHex("0102ff"), bytes.readRemainingBytes());
+
+            OutputBuffer unknown = new OutputBuffer();
+
+            unknown.writeLong(999L);
+            unknown.writeInt(0);
+
+            InputBuffer none = ask(ratchet.peer(), Opcodes.Stats.LADDER_READ, unknown);
+
+            none.readLong();
+            none.readInt();
+            Assertions.assertEquals(0, none.readUnsignedByte());
+        }
+    }
+
+    /**
+     * A logged-in test client.
+     * @param peer Its connection.
+     * @param id Its account id.
+     */
+
+    private record Player(Peer peer, long id) {}
 }

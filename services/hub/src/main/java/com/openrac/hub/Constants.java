@@ -21,6 +21,13 @@ public class Constants {
     public static final int MAX_NAME_LENGTH = 32;
     public static final int MAX_VERSION_LENGTH = 32;
     public static final int MAX_TOKEN_LENGTH = 64;
+    public static final int MAX_FAMILY_LENGTH = 32;
+
+    // The game's own stats formats, and the most rows one answer carries.
+    public static final int MAX_LADDER_STATS = 100; // A Medius ladder row holds 100 values.
+    public static final int MAX_CAREER_BYTES = 256; // A Medius career blob is 256 bytes.
+    public static final int MAX_LADDER_PAGE = 32; // Rows per ladder page, within one frame.
+    public static final int MAX_RESULT_PLAYERS = 32; // Scoreboard lines in one game result.
 
     public static final int HELLO_TIMEOUT_SECONDS = Environment.getInt("HELLO_TIMEOUT_SECONDS", 10); // Hello or register within this.
     public static final int MAX_CONNECTIONS_PER_ADDRESS = Environment.getInt("MAX_CONNECTIONS_PER_ADDRESS", 8);

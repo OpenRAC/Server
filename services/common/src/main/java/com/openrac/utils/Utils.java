@@ -43,4 +43,14 @@ public class Utils {
     public static boolean isValid(String text, int maxLength) {
         return !text.isBlank() && text.length() <= maxLength;
     }
+
+    /**
+     * @param text A string read from the wire, such as a game family.
+     * @param maxLength The most characters it may have.
+     * @return Whether it is 1 to maxLength characters of printable ASCII without spaces.
+     */
+
+    public static boolean isWord(String text, int maxLength) {
+        return !text.isEmpty() && text.length() <= maxLength && text.chars().allMatch(c -> c > 0x20 && c <= 0x7E);
+    }
 }

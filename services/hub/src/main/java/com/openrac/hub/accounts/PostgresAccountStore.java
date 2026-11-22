@@ -1,28 +1,28 @@
 package com.openrac.hub.accounts;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
+import com.openrac.hub.database.Sql;
+
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
-import javax.sql.DataSource;
 
 /**
- * Accounts and sessions in PostgreSQL, in the tables the migrations create. A database error is
- * thrown on as unchecked, and the caller answers the player with TRY_LATER.
+ * Accounts and sessions in PostgreSQL, in the tables the migrations create.
  */
 
 public class PostgresAccountStore implements AccountStore {
-    private final DataSource pool;
+    private static final String ACCOUNT_COLUMNS = "a.id, a.name, a.password_hash";
+
+    private final Sql sql;
 
     /**
      * Creates the store.
-     * @param pool The database's connection pool.
+     * @param sql The runner on the database's pool.
      */
 
-    public PostgresAccountStore(DataSource pool) {
-        this.pool = pool;
+    public PostgresAccountStore(Sql sql) {
+        this.sql = sql;
     }
 
     /**
@@ -32,7 +32,7 @@ public class PostgresAccountStore implements AccountStore {
 
     @Override
     public Account find(String name) {
-        return queryAccount("SELECT id, name, password_hash FROM accounts WHERE lower(name) = lower(?)", name);
+        return sql.queryOne("SELECT " + ACCOUNT_COLUMNS + " FROM accounts a WHERE lower(a.name) = lower(?)", PostgresAccountStore::readAccount, name);
     }
 
     /**
@@ -44,9 +44,9 @@ public class PostgresAccountStore implements AccountStore {
 
     @Override
     public Account create(String name, String passwordHash) {
-        String sql = "INSERT INTO accounts (name, password_hash) VALUES (?, ?) ON CONFLICT DO NOTHING RETURNING id, name, password_hash";
+        String insert = "INSERT INTO accounts AS a (name, password_hash) VALUES (?, ?) ON CONFLICT DO NOTHING RETURNING " + ACCOUNT_COLUMNS;
 
-        return queryAccount(sql, name, passwordHash);
+        return sql.queryOne(insert, PostgresAccountStore::readAccount, name, passwordHash);
     }
 
     /**
@@ -56,7 +56,7 @@ public class PostgresAccountStore implements AccountStore {
 
     @Override
     public void touch(long accountId) {
-        update("UPDATE accounts SET last_login = now() WHERE id = ?", accountId);
+        sql.update("UPDATE accounts SET last_login = now() WHERE id = ?", accountId);
     }
 
     /**
@@ -68,7 +68,7 @@ public class PostgresAccountStore implements AccountStore {
 
     @Override
     public void addSession(String tokenHash, long accountId, Instant expires) {
-        update("INSERT INTO sessions (token_hash, account_id, expires_at) VALUES (?, ?, ?)", tokenHash, accountId, Timestamp.from(expires));
+        sql.update("INSERT INTO sessions (token_hash, account_id, expires_at) VALUES (?, ?, ?)", tokenHash, accountId, Timestamp.from(expires));
     }
 
     /**
@@ -79,9 +79,9 @@ public class PostgresAccountStore implements AccountStore {
 
     @Override
     public Account findSession(String tokenHash, Instant now) {
-        String sql = "SELECT a.id, a.name, a.password_hash FROM sessions s JOIN accounts a ON a.id = s.account_id WHERE s.token_hash = ? AND s.expires_at > ?";
+        String query = "SELECT " + ACCOUNT_COLUMNS + " FROM sessions s JOIN accounts a ON a.id = s.account_id WHERE s.token_hash = ? AND s.expires_at > ?";
 
-        return queryAccount(sql, tokenHash, Timestamp.from(now));
+        return sql.queryOne(query, PostgresAccountStore::readAccount, tokenHash, Timestamp.from(now));
     }
 
     /**
@@ -91,7 +91,7 @@ public class PostgresAccountStore implements AccountStore {
 
     @Override
     public void removeSession(String tokenHash) {
-        update("DELETE FROM sessions WHERE token_hash = ?", tokenHash);
+        sql.update("DELETE FROM sessions WHERE token_hash = ?", tokenHash);
     }
 
     /**
@@ -101,56 +101,16 @@ public class PostgresAccountStore implements AccountStore {
 
     @Override
     public void removeExpired(Instant now) {
-        update("DELETE FROM sessions WHERE expires_at <= ?", Timestamp.from(now));
+        sql.update("DELETE FROM sessions WHERE expires_at <= ?", Timestamp.from(now));
     }
 
     /**
-     * Runs a query that returns at most one account.
-     * @param sql The query, with a ? per value.
-     * @param values The values, in order.
-     * @return The account, or null when no row came back.
+     * @param row A result at an account row.
+     * @return The account.
+     * @throws SQLException When a column cannot be read.
      */
 
-    private Account queryAccount(String sql, Object... values) {
-        try (Connection connection = pool.getConnection(); PreparedStatement statement = prepare(connection, sql, values);
-                ResultSet row = statement.executeQuery()) {
-            // No row: an unknown name or session, or a name taken meanwhile.
-            if (!row.next()) return null;
-
-            return new Account(row.getLong("id"), row.getString("name"), row.getString("password_hash"));
-        } catch (SQLException exception) {
-            throw new IllegalStateException(exception.getMessage(), exception);
-        }
-    }
-
-    /**
-     * Runs a statement that returns no rows.
-     * @param sql The statement, with a ? per value.
-     * @param values The values, in order.
-     */
-
-    private void update(String sql, Object... values) {
-        try (Connection connection = pool.getConnection(); PreparedStatement statement = prepare(connection, sql, values)) {
-            statement.executeUpdate();
-        } catch (SQLException exception) {
-            throw new IllegalStateException(exception.getMessage(), exception);
-        }
-    }
-
-    /**
-     * Prepares a statement and binds its values.
-     * @param connection The pooled connection.
-     * @param sql The statement, with a ? per value.
-     * @param values The values, in order.
-     * @return The bound statement.
-     * @throws SQLException When the statement does not prepare.
-     */
-
-    private static PreparedStatement prepare(Connection connection, String sql, Object... values) throws SQLException {
-        PreparedStatement statement = connection.prepareStatement(sql);
-
-        for (int i = 0; i < values.length; i++) statement.setObject(i + 1, values[i]);
-
-        return statement;
+    private static Account readAccount(ResultSet row) throws SQLException {
+        return new Account(row.getLong("id"), row.getString("name"), row.getString("password_hash"));
     }
 }

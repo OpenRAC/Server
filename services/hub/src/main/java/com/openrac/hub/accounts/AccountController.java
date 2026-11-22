@@ -2,7 +2,9 @@ package com.openrac.hub.accounts;
 
 import at.favre.lib.crypto.bcrypt.BCrypt;
 import io.netty.channel.Channel;
+import io.netty.util.AttributeKey;
 
+import com.openrac.hub.Background;
 import com.openrac.hub.Constants;
 import com.openrac.net.packets.Opcodes;
 import com.openrac.net.packets.model.OutputBuffer;
@@ -22,8 +24,6 @@ import java.util.Base64;
 import java.util.HexFormat;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 
 /**
  * Logs players in to their accounts. A name nobody has registers on its first login, as the game's
@@ -35,18 +35,13 @@ import java.util.concurrent.Executors;
 public class AccountController {
     private static final SecureRandom random = new SecureRandom();
 
+    // The account a connection logged in to, for its stats writes.
+    private static final AttributeKey<Account> accountKey = AttributeKey.valueOf("account");
+
     // Wrong passwords per address in the current window.
     private static final Map<InetAddress, Integer> failures = new ConcurrentHashMap<>();
 
     private static volatile AccountStore store = new MemoryAccountStore();
-
-    private static volatile Executor executor = Executors.newFixedThreadPool(Constants.ACCOUNT_THREADS, runnable -> {
-        Thread thread = new Thread(runnable, "accounts");
-
-        thread.setDaemon(true);
-
-        return thread;
-    });
 
     /**
      * Logs a client in, registering the name when it is new.
@@ -69,7 +64,7 @@ public class AccountController {
             return;
         }
 
-        run(channel, () -> {
+        Background.run(channel, () -> {
             Account account = store.find(name);
             boolean created = false;
 
@@ -94,6 +89,7 @@ public class AccountController {
 
             String token = createToken();
 
+            channel.attr(accountKey).set(account);
             store.touch(account.id());
             store.addSession(hash(token), account.id(), Instant.now().plus(Duration.ofDays(Constants.SESSION_DAYS)));
 
@@ -110,7 +106,9 @@ public class AccountController {
      */
 
     public static void logout(Channel channel, String token) {
-        run(channel, () -> store.removeSession(hash(token)));
+        channel.attr(accountKey).set(null);
+
+        Background.run(channel, () -> store.removeSession(hash(token)));
     }
 
     /**
@@ -121,7 +119,7 @@ public class AccountController {
      */
 
     public static void verify(Channel channel, int request, String token) {
-        run(channel, () -> {
+        Background.run(channel, () -> {
             Account account = store.findSession(hash(token), Instant.now());
             OutputBuffer answer = new OutputBuffer();
 
@@ -142,30 +140,7 @@ public class AccountController {
     public static void sweep() {
         failures.clear();
 
-        executor.execute(() -> {
-            try {
-                store.removeExpired(Instant.now());
-            } catch (RuntimeException exception) {
-                Log.error("Could not forget expired sessions: " + exception.getMessage() + ".");
-            }
-        });
-    }
-
-    /**
-     * Runs account work off the event loop. A store that fails answers TRY_LATER.
-     * @param channel The connection that asked.
-     * @param work The work, which answers on its own.
-     */
-
-    private static void run(Channel channel, Runnable work) {
-        executor.execute(() -> {
-            try {
-                work.run();
-            } catch (RuntimeException exception) {
-                Log.error("Account request from " + channel.remoteAddress() + " failed: " + exception.getMessage() + ".");
-                channel.writeAndFlush(new ErrorPacket(Opcodes.Error.TRY_LATER));
-            }
-        });
+        Background.run("forget expired sessions", () -> store.removeExpired(Instant.now()));
     }
 
     /**
@@ -205,18 +180,19 @@ public class AccountController {
     }
 
     /**
+     * @param channel A client's connection to the hub.
+     * @return The account it logged in to, or null.
+     */
+
+    public static Account getAccount(Channel channel) {
+        return channel.attr(accountKey).get();
+    }
+
+    /**
      * @param store Where accounts are kept from now on.
      */
 
     public static void setStore(AccountStore store) {
         AccountController.store = store;
-    }
-
-    /**
-     * @param executor What runs account work; tests run it inline.
-     */
-
-    public static void setExecutor(Executor executor) {
-        AccountController.executor = executor;
     }
 }

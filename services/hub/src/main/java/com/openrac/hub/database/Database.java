@@ -1,4 +1,4 @@
-package com.openrac.hub.accounts;
+package com.openrac.hub.database;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;

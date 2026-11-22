@@ -4,15 +4,18 @@ import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 
 import com.openrac.hub.Constants;
+import com.openrac.hub.accounts.Account;
 import com.openrac.hub.accounts.AccountController;
 import com.openrac.hub.servers.GameServer;
 import com.openrac.hub.servers.ServerController;
+import com.openrac.hub.stats.StatsController;
 import com.openrac.net.NetworkConstants;
 import com.openrac.net.limits.ConnectionLimit;
 import com.openrac.net.limits.RateLimit;
 import com.openrac.net.netty.handlers.PacketHandler;
 import com.openrac.net.packets.Opcodes;
 import com.openrac.net.packets.Packets;
+import com.openrac.net.packets.model.GameResult;
 import com.openrac.net.packets.model.InputBuffer;
 import com.openrac.net.packets.out.ErrorPacket;
 import com.openrac.net.packets.out.HelloPacket;
@@ -116,6 +119,7 @@ public class HubPacketHandler extends PacketHandler {
             }
             case SERVERS -> handleServers(ctx, payload);
             case ACCOUNT -> handleAccount(ctx, payload);
+            case STATS -> handleStats(ctx, payload);
             case TIME -> ctx.writeAndFlush(new TimePacket(payload.readLong(), Clock.now()));
 
             // Lobbies, parties and game data live on the game servers.
@@ -228,6 +232,8 @@ public class HubPacketHandler extends PacketHandler {
                 if (token != null) AccountController.verify(ctx.channel(), request, token);
             }
 
+            case RESULT -> handleResult(ctx, payload);
+
             // The rest only the hub sends.
             case null, default -> reject(ctx, "sent an invalid hub opcode");
         }
@@ -274,6 +280,119 @@ public class HubPacketHandler extends PacketHandler {
             // TOKEN belongs to game servers, LOGGED_IN to the hub.
             case null, default -> reject(ctx, "sent an invalid account opcode");
         }
+    }
+
+    /**
+     * Stores a game a server reports as finished.
+     * @param ctx The channel handler context.
+     * @param payload The HUB RESULT payload after its opcode.
+     */
+
+    private void handleResult(ChannelHandlerContext ctx, InputBuffer payload) {
+        GameResult result = GameResult.read(payload, Constants.MAX_RESULT_PLAYERS);
+
+        // An oversized scoreboard or bad family means a broken server.
+        if (result == null || !Utils.isWord(result.family(), Constants.MAX_FAMILY_LENGTH) || result.name().length() > Constants.MAX_NAME_LENGTH) {
+            reject(ctx, "sent an invalid game result");
+            return;
+        }
+
+        StatsController.record(server, ctx.channel(), result);
+    }
+
+    /**
+     * Answers a client's stats and ladder requests, and stores its own ladder and career values.
+     * @param ctx The channel handler context.
+     * @param payload The stats packet's payload.
+     */
+
+    private void handleStats(ChannelHandlerContext ctx, InputBuffer payload) {
+        // Servers report games through HUB RESULT instead.
+        if (!isGuest(ctx, Packets.STATS)) return;
+
+        Opcodes.Stats opcode = Opcodes.Stats.get(payload.readUnsignedByte());
+        String family = payload.readString();
+
+        // A family is compared, never shown, so anything else is broken.
+        if (opcode == null || !Utils.isWord(family, Constants.MAX_FAMILY_LENGTH)) {
+            reject(ctx, "sent an invalid stats request");
+            return;
+        }
+
+        switch (opcode) {
+            case TOTALS -> StatsController.totals(ctx.channel(), family, payload.readLong());
+            case LADDER_READ -> StatsController.readLadder(ctx.channel(), family, payload.readLong(), payload.readInt());
+            case CAREER_READ -> StatsController.readCareer(ctx.channel(), family, payload.readLong());
+            case LADDER_PAGE -> {
+                int type = payload.readInt();
+                int index = readStatIndex(ctx, payload);
+                boolean descending = payload.readUnsignedByte() != 0;
+                int start = Math.max(1, payload.readInt());
+                int count = Math.min(Constants.MAX_LADDER_PAGE, payload.readUnsignedByte());
+
+                // A bad index already closed the connection.
+                if (index >= 0) StatsController.page(ctx.channel(), family, type, index, descending, start, count);
+            }
+            case LADDER_POSITION -> {
+                long accountId = payload.readLong();
+                int type = payload.readInt();
+                int index = readStatIndex(ctx, payload);
+                boolean descending = payload.readUnsignedByte() != 0;
+
+                // A bad index already closed the connection.
+                if (index >= 0) StatsController.position(ctx.channel(), family, accountId, type, index, descending);
+            }
+            case LADDER_WRITE -> {
+                Account account = getAccount(ctx);
+                int type = payload.readInt();
+                int count = payload.readUnsignedByte();
+
+                // A row past the game's format only comes from a broken client.
+                if (count > Constants.MAX_LADDER_STATS) {
+                    reject(ctx, "sent too many ladder values");
+                    return;
+                }
+
+                int[] stats = new int[count];
+
+                for (int i = 0; i < count; i++) stats[i] = payload.readInt();
+
+                // Not logged in: already told NOT_LOGGED_IN.
+                if (account != null) StatsController.writeLadder(ctx.channel(), account, family, type, stats);
+            }
+            case CAREER_WRITE -> {
+                Account account = getAccount(ctx);
+                byte[] stats = payload.readRemainingBytes();
+
+                // Career bytes past the game's format only come from a broken client.
+                if (stats.length > Constants.MAX_CAREER_BYTES) {
+                    reject(ctx, "sent too many career bytes");
+                    return;
+                }
+
+                // Not logged in: already told NOT_LOGGED_IN.
+                if (account != null) StatsController.writeCareer(ctx.channel(), account, family, stats);
+            }
+        }
+    }
+
+    /**
+     * Reads which ladder value to sort by, closing a connection that names one past the row.
+     * @param ctx The channel handler context.
+     * @param payload The rest of the request.
+     * @return The index, or -1 when it was invalid and the connection is closed.
+     */
+
+    private int readStatIndex(ChannelHandlerContext ctx, InputBuffer payload) {
+        int index = payload.readUnsignedByte();
+
+        // A ladder row holds only so many values.
+        if (index >= Constants.MAX_LADDER_STATS) {
+            reject(ctx, "sent an invalid ladder value index");
+            return -1;
+        }
+
+        return index;
     }
 
     /**
@@ -330,6 +449,20 @@ public class HubPacketHandler extends PacketHandler {
         if (!guest) reject(ctx, "sent " + packet + ", which only clients send");
 
         return guest;
+    }
+
+    /**
+     * @param ctx The channel handler context.
+     * @return The account this client logged in to, or null after telling it NOT_LOGGED_IN.
+     */
+
+    private Account getAccount(ChannelHandlerContext ctx) {
+        Account account = AccountController.getAccount(ctx.channel());
+
+        // Only a logged-in player writes its own stats.
+        if (account == null) ctx.writeAndFlush(new ErrorPacket(Opcodes.Error.NOT_LOGGED_IN));
+
+        return account;
     }
 
     /**
