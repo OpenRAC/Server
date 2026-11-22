@@ -9,6 +9,10 @@ public final class Opcodes {
 
     private Opcodes() {}
 
+    /**
+     * Opcodes of the PARTY packet: creating, joining, listing and running parties.
+     */
+
     public enum Party {
         CREATE, // Client asks for a new party it hosts.
         JOIN, // Client joins a party by its code.
@@ -39,6 +43,10 @@ public final class Opcodes {
             return values()[id];
         }
     }
+
+    /**
+     * Reasons the ERROR packet gives for a refused party request.
+     */
 
     public enum Error {
         PARTY_NOT_FOUND,
