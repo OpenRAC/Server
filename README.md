@@ -263,6 +263,12 @@ launcher checks everything again and shows it to the player before anything chan
 - **Saved.** To `MODSET_FILE` every `MODSET_SAVE_MINUTES` and at shutdown, so a restart keeps the codes.
   A file that cannot be read is logged and the store starts empty; its codes then answer `404`.
 
+## Acknowledgements
+
+The Horizon Private Server project (https://github.com/Horizon-Private-Server/horizon-server, MIT
+license) was used for protocol research: to understand what the online games' lobby and game room
+messages do while their handling was identified in the games' own code. No code was taken from it.
+
 ## License
 
 GNU Affero General Public License v3.0; see [LICENSE](LICENSE).
