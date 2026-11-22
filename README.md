@@ -89,7 +89,7 @@ for packets that have one, then the payload. Frames are at most 65,536 bytes, le
 Integers are big-endian; a string is a 2-byte length then UTF-8 bytes (-1 for empty).
 
 The first packet must be `HELLO`. Anything malformed, unknown or oversized closes the connection.
-Names and versions are 1 to 32 characters, chat messages 1 to 256. Parties hold 4 players. A party description is at most 48 characters of printable ASCII, and a `LIST` answer carries at most 32 parties (`MAX_DESCRIPTION_LENGTH`, `MAX_LISTED_PARTIES`).
+Names and versions are 1 to 32 characters, chat messages 1 to 256. Parties hold 4 players, or what `FAMILY_PARTY_SIZES` gives their family, up to 24 (Up Your Arsenal's: 8, what the unmodified game shows). A party description is at most 48 characters of printable ASCII, and a `LIST` answer carries at most 32 parties (`MAX_DESCRIPTION_LENGTH`, `MAX_LISTED_PARTIES`).
 
 | Id | Packet | Direction | Payload |
 |---|---|---|---|
@@ -100,6 +100,9 @@ Names and versions are 1 to 32 characters, chat messages 1 to 256. Parties hold 
 | | | server → members | sender id int, message string |
 | 3 | `DATA` | client → server | target id int, opaque bytes to the end of the frame |
 | | | server → client | sender id int, opaque bytes |
+| 8 | `REGIONS` | client → hub | the game family string |
+| | | hub → client | count byte, then per region: name string, host string (empty: the address the client reached the hub on), port int, players int |
+| 9 | `REGISTER` | region → hub | key string, name string, host string (empty: the address the hub sees), port int, players int; after `HELLO`, then every `REGION_REPORT_SECONDS` |
 | 4 | `ERROR` | server → client | reason opcode byte |
 | 5 | `TIME` | client → server | client time long (ms) |
 | | | server → client | the client time echoed, server time long (ms since the server started) |
@@ -128,6 +131,7 @@ Names and versions are 1 to 32 characters, chat messages 1 to 256. Parties hold 
 | 11 | `KICK` | client → server | member id int; from the host only (else `NOT_HOST`). The member gets `KICKED`, the others `LEFT`. Its connection stays and its code still works, but `FIND` no longer puts it in that party. An id that is not a member's does nothing |
 | 12 | `KICKED` | server → member | none; the host removed it from the party |
 | 13 | `ADVERT` | client → server | opaque bytes to the end of the frame, at most `MAX_ADVERT_LENGTH` (512); from the host only (else `NOT_HOST`, or `NOT_IN_PARTY` outside a party). Replaces the bytes `LIST` shows with the party when asked for adverts |
+| 14 | `SLOTS` | server → members that read it | count byte, then id int + slot byte per member; sent after `INFO` and whenever a member joins or leaves, only to clients that set bit 1 (2) of `HELLO`'s byte. A member keeps its slot while it is in the party; a newcomer takes the lowest free one, the host starts at 0 |
 
 The description is sanitised on the server: only printable ASCII (0x20 to 0x7E) is kept, the ends are
 trimmed and it is cut to 48 characters. `LIST` names the parties of the requester's game family with room
@@ -139,9 +143,9 @@ It shares the party-request rate, which allows a request every 3 seconds.
 4 `NOT_HOST`, 5 `RESUME_REFUSED`, 6 `OTHER_GAME` (followed by the party's game family string).
 
 `UDP`'s feature bits say which requests this server takes, since an unknown one closes the
-connection: bit 0 (1) `KICK`, bit 1 (2) `RESUME`, bit 2 (4) `ADVERT`, bit 3 (8) `RELAY`. A client from before them stops reading at the port.
+connection: bit 0 (1) `KICK`, bit 1 (2) `RESUME`, bit 2 (4) `ADVERT`, bit 3 (8) `RELAY`, bit 4 (16) `REGIONS`. A client from before them stops reading at the port.
 
-A client that can come back says so with a byte after its name in `HELLO` (bit 0). Its connection
+A client that can come back says so with a byte after its name in `HELLO` (bit 0); bit 1 asks for `SLOTS`. Its connection
 dropping is then no leaving: the others get `RESUME` with 0, and the session waits for
 `RESUME_SECONDS` (120), keeping its id, its slot and its place in the party. On a new connection the
 client says `HELLO`, then `RESUME`: refused with `RESUME_REFUSED`, or answered as if greeted again
@@ -214,6 +218,26 @@ Datagrams have no length prefix. Integers are big-endian.
 |---|---|---|
 | 0 | `BIND` | client → server: none |
 | 1 | `STATE` | client → server: target id int, opaque bytes to the end; server → client: sender id int, opaque bytes |
+
+## Hub and regions
+
+Players first reach a **hub** (what a game's `OPENRAC_SERVER` names), then pick a **region**, which
+runs the lobbies and game rooms (parties, adverts, relays). It follows the online games' own split:
+an authentication server with a list of lobby servers, then the lobby and the games of the one
+chosen. Up Your Arsenal's city select and channel list map onto the region list.
+
+`MODE` picks the role:
+
+| Mode | Runs |
+| --- | --- |
+| `all` (default) | the hub and one region of its own, `REGION_NAME`: one process, enough for local or small hosting |
+| `hub` | the hub only: greetings and the region list |
+| `region` | lobbies and game rooms; registers with the hub at `HUB_ADDRESS` (`REGISTER` every `REGION_REPORT_SECONDS`) and leaves its list when the connection drops |
+
+Anyone can run a region and have it listed, unless the hub sets `REGION_KEY`, which every region
+must then send. A region gives the address players reach it on in `REGION_HOST`, or leaves it empty
+for the one the hub sees. Accounts, profiles and an HTTP API for them would sit with the hub; there
+are none yet: a player's name is the one it says hello with.
 
 ## Mod sets
 
