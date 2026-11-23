@@ -359,9 +359,7 @@ public class RoomFlowTests {
 
             Assertions.assertEquals(Map.of(host.id, 0), readSlots(host));
 
-            for (Client joiner : List.of(first, second)) {
-                joiner.send(joinRequest(code, "rac3-pal-1"));
-            }
+            for (Client joiner : List.of(first, second)) joiner.send(joinRequest(code, "rac3-pal-1"));
 
             Assertions.assertEquals(1, readSlotsAfterJoin(first).get(first.id));
             Assertions.assertEquals(2, readSlotsAfterJoin(second).get(second.id));

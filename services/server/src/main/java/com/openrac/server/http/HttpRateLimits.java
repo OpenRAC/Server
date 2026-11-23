@@ -16,6 +16,11 @@ public class HttpRateLimits {
     private static final int MAX_ADDRESSES = 10_000;
 
     private final Map<InetAddress, Buckets> buckets = new LinkedHashMap<>(16, 0.75f, true) {
+        /**
+         * @param eldest The address unseen longest.
+         * @return Whether the table is past its size limit, so it goes.
+         */
+
         @Override
         protected boolean removeEldestEntry(Map.Entry<InetAddress, Buckets> eldest) {
             return size() > MAX_ADDRESSES;

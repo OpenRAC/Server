@@ -61,6 +61,10 @@ public class ModSetFlowTests {
             remote = new InetSocketAddress(InetAddress.getByName(address), 40000);
         }
 
+        /**
+         * @return The address given to the constructor.
+         */
+
         @Override
         protected SocketAddress remoteAddress0() {
             return remote;

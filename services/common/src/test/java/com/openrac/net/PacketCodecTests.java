@@ -75,6 +75,11 @@ public class PacketCodecTests {
         EmbeddedChannel channel = new EmbeddedChannel();
 
         new PacketChannelInitializer() {
+            /**
+             * Adds nothing: the tests read the shared codecs' output.
+             * @param pipeline The channel pipeline being built.
+             */
+
             @Override
             protected void addLastHandlers(ChannelPipeline pipeline) {}
         }.initPipeline(channel.pipeline());
