@@ -41,8 +41,8 @@ messages 1 to 256.
 | 7 | `RELAY` | client → server | target id int (0 every other member), opaque bytes to the end of the frame |
 | | | server → client | sender id int, opaque bytes |
 | 8 | `REGIONS` | client → hub | the game family string |
-| | | hub → client | count byte, then per game server: region name string, host string (empty: the address the client reached the hub on), port int, players int |
-| 9 | `REGISTER` | game server → hub | key string, region name string, host string (empty: see [hub.md](hub.md#addresses)), port int, players int, server name string; the first packet on the link, instead of `HELLO` |
+| | | hub → client | count byte, then per game server: region code string, host string (empty: the address the client reached the hub on), port int, players int; then, appended, each server's name string in the same order (empty: none). An older hub stops after the list |
+| 9 | `REGISTER` | game server → hub | key string, region code string ([configuration.md](configuration.md#region-codes)), host string (empty: see [hub.md](hub.md#addresses)), port int, players int, server name string (0 to 32 printable ASCII characters, empty: none); the first packet on the link, instead of `HELLO` |
 | 10 | `UI` | both | opcode byte, then as [below](#ui-opcodes) |
 | 11 | `HUB` | both | opcode byte, then as [below](#hub-opcodes): a game server's link to the hub |
 | 12 | `SERVERS` | both | opcode byte, then as [below](#servers-opcodes): the live game server list |
@@ -107,7 +107,7 @@ Between a client and the hub. Behaviour: [hub.md](hub.md#the-server-list).
 | Opcode | Name | Direction | Payload |
 |---|---|---|---|
 | 0 | `WATCH` | client → hub | the game family string; answered with `ADDED` for every listed server, then each change as it happens |
-| 1 | `ADDED` | hub → client | id int, region string, server name string, host string (empty: the hub's address), port int, players int, parties int |
+| 1 | `ADDED` | hub → client | id int, region code string, server name string (empty: none), host string (empty: the hub's address), port int, players int, parties int |
 | 2 | `CHANGED` | hub → client | id int, players int, parties int; only when a count changed |
 | 3 | `REMOVED` | hub → client | id int; the server closed, said `CLOSING` or went quiet |
 

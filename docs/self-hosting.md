@@ -10,10 +10,12 @@ The server is open source, and anyone can run any part of it. Every setting name
   7770. Players point their game at your address, port 7177. Accounts live in memory unless you set
   `DATABASE_URL`.
 - **A whole network with Docker.** `docker compose up -d` runs PostgreSQL, the hub and a game server
-  (see [Docker](#docker)). Set `DATABASE_PASSWORD`, `REGION_NAME` and `REGION_HOST` in a `.env` first.
+  (see [Docker](#docker)). Set `DATABASE_PASSWORD`, `REGION`, `SERVER_NAME` and `REGION_HOST` in a
+  `.env` first.
 - **A game server on the official hub.** Run the game server alone (the default `MODE=region` and
-  `HUB_ADDRESS`), with `REGION_NAME` naming your region and `REGION_HOST` your public address,
-  plus `REGION_KEY` if the hub's operators gave you one. Open TCP and UDP 7770. It shows up in every
+  `HUB_ADDRESS`), with `REGION` set to your region's code (`US`, `DE`, see
+  [region codes](configuration.md#region-codes)), `SERVER_NAME` to the name players see and
+  `REGION_HOST` to your public address, plus `REGION_KEY` if the hub's operators gave you one. Open TCP and UDP 7770. It shows up in every
   player's list while it runs.
 - **Your own hub with several game servers.** Run the hub (`./scripts/run_hub.sh`, with
   `DATABASE_URL` for lasting accounts and `REGION_KEY` to list only your servers), and point each game
@@ -65,7 +67,8 @@ docker compose down                      # stop it (the volumes keep the account
 
 Put a `.env` beside `docker-compose.yml` before the first start, with at least
 `DATABASE_PASSWORD` (the PostgreSQL password, `openrac` otherwise) and, for players outside this
-machine's network, `REGION_HOST` (the address they reach the game server on) and `REGION_NAME`.
+machine's network, `REGION_HOST` (the address they reach the game server on), `REGION` and
+`SERVER_NAME`.
 It also overrides `.env.defaults` inside both containers.
 
 ### One container per service

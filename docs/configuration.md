@@ -12,7 +12,7 @@ a `.env` at `/app/.env`, or pass `-e KEY=value` or `--key value`.
 
 | Setting | Default | Read by | Meaning |
 |---|---|---|---|
-| `NAME` | `OpenRAC Server` | game server | The server's name, sent to the hub in `REGISTER` (1 to 32 characters) |
+| `NAME` | `OpenRAC Server` | game server | The process's name in its own logs |
 | `HOST` | `0.0.0.0` | both | The address to listen on (`0.0.0.0` for every interface) |
 | `PORT` | `7770` | game server | The game port, TCP and UDP |
 | `HTTP_PORT` | `7771` | game server | The [mod set](mod-sets.md) port, HTTP over TCP |
@@ -23,7 +23,9 @@ a `.env` at `/app/.env`, or pass `-e KEY=value` or `--key value`.
 |---|---|---|---|
 | `MODE` | `region` | game server | `region`: register with the hub at `HUB_ADDRESS`. `all`: also run that hub in the same process. See [architecture.md](architecture.md#modes) |
 | `HUB_ADDRESS` | `hub.openrac.dev:7177` | game server | The hub to register with |
-| `REGION_NAME` | `Local` | game server | The region's name in the list |
+| `REGION` | `LOCAL` | game server | The region's code, from the [list below](#region-codes). An unknown code stops the server with an error. Clients turn it into a name ("United States") |
+| `SERVER_NAME` | empty | game server | The name clients show with the region, such as `Thyrannosis USA`: up to 32 printable ASCII characters (spaces allowed). Empty: clients show the region alone. Anything else stops the server with an error |
+| `REGION_NAME` | unset | game server | Deprecated, read for this release only: while `REGION` is `LOCAL`, a `REGION_NAME` holding a code stands in for it, with a warning. A free-text name (`Europe`) stops the server; set `REGION` instead |
 | `REGION_HOST` | empty | game server | The address players reach this server on. Empty: see [hub.md](hub.md#addresses) |
 | `REGION_REPORT_SECONDS` | `5` | game server | Seconds between heartbeats to the hub |
 | `HUB_NAME` | `OpenRAC Hub` | hub | The hub's name in its logs |
@@ -34,6 +36,20 @@ a `.env` at `/app/.env`, or pass `-e KEY=value` or `--key value`.
 | `HUB_REQUEST_PER_SECOND` | `2` | hub | The steady rate before login; over it the hub answers `TRY_LATER` |
 | `HUB_ACCOUNT_REQUEST_BURST` | `40` | hub | Client requests in a burst, once logged in |
 | `HUB_ACCOUNT_REQUEST_PER_SECOND` | `10` | hub | The steady rate once logged in |
+
+### Region codes
+
+A region is a code, never free text, so that every client can name it in its own words. The codes
+are kept once, in `services/common` (`Regions`):
+
+- every ISO 3166-1 alpha-2 country code, in upper case: `US` (United States), `CA` (Canada), `MX`,
+  `BR`, `GB` (United Kingdom, not `UK`), `DE`, `FR`, `ES`, `IT`, `NL`, `SE`, `PL`, `RU`, `JP`,
+  `KR`, `CN`, `SG`, `IN`, `AU`, `NZ`, `ZA` and the rest of the standard's 249;
+- `EU`: Europe as a whole, for a server meant for the whole continent (ISO reserves the code);
+- `LOCAL`: a LAN party or a development box, the default.
+
+Codes read in any case (`us` is `US`). A code, once listed, is never removed. Adding one means a
+new server release, and clients show a code they do not know as the code itself.
 
 ## Accounts and stats
 
