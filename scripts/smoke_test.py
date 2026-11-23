@@ -128,11 +128,21 @@ class Connection:
 
 
 def connect(host, port, deadline):
-    """Connects, retrying until the deadline while the service starts."""
+    """Connects and says hello, retrying until the deadline while the service starts.
+
+    Docker publishes a port before the service listens on it, so a connection can open and then be
+    reset; that counts as not up yet.
+    """
     while True:
+        connection = None
+
         try:
-            return Connection(host, port)
+            connection = Connection(host, port)
+
+            return connection, connection.hello("Smoke")
         except OSError as error:
+            if connection: connection.close()
+
             if time.monotonic() > deadline: raise RuntimeError(f"nothing answers on {host}:{port}: {error}") from error
 
             time.sleep(1)
@@ -165,8 +175,8 @@ def main():
     name = "Smoke" + secrets.token_hex(4)
     password = secrets.token_hex(8)
 
-    hub = connect(hub_host, int(hub_port), deadline)
-    print(f"hub: HELLO, session {hub.hello('Smoke')}")
+    hub, session = connect(hub_host, int(hub_port), deadline)
+    print(f"hub: HELLO, session {session}")
 
     hub.send(ACCOUNT, bytes([LOGIN]), string(name), string(password))
     login = hub.receive(ACCOUNT)
@@ -191,8 +201,8 @@ def main():
     print(f"hub: REGIONS, {len(listed)} listed, first {server}")
     hub.close()
 
-    game = connect(args.server_host, server["port"], deadline)
-    print(f"server: HELLO, session {game.hello('Smoke')}")
+    game, session = connect(args.server_host, server["port"], deadline)
+    print(f"server: HELLO, session {session}")
 
     game.send(ACCOUNT, bytes([TOKEN]), string(token))
     verified = game.receive(ACCOUNT)
