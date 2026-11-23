@@ -37,4 +37,12 @@ public class SessionRegistry {
     public static Session get(int id) {
         return sessions.get(id);
     }
+
+    /**
+     * @return How many sessions are connected.
+     */
+
+    public static int getCount() {
+        return sessions.size();
+    }
 }

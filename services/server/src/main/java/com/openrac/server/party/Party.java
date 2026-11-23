@@ -8,7 +8,9 @@ import com.openrac.server.Session;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
@@ -25,6 +27,9 @@ public class Party {
     private final String family; // The host's game family: only its own family sees or joins it.
     private int epoch; // One more at each change of host.
     private volatile byte[] advert = new byte[0]; // Opaque to the server, set by the host.
+    private final int size; // Players it holds, by its family.
+
+    private final Map<Session, Integer> slots = new ConcurrentHashMap<>(); // Each member's stable slot.
 
     private final List<Session> members = new CopyOnWriteArrayList<>();
     private final Set<Integer> kicked = new HashSet<>(); // Only touched under the controller's lock.
@@ -44,8 +49,10 @@ public class Party {
         this.host = host;
         this.description = description;
         this.family = family;
+        this.size = Constants.getPartySize(family);
 
         members.add(host);
+        slots.put(host, 0);
     }
 
     /**
@@ -122,6 +129,14 @@ public class Party {
 
     void add(Session session) {
         members.add(session);
+
+        for (int slot = 0; slot < Constants.MAX_SLOTS; slot++) {
+            // A held slot stays with its member until it leaves.
+            if (slots.containsValue(slot)) continue;
+
+            slots.put(session, slot);
+            break;
+        }
     }
 
     /**
@@ -131,6 +146,7 @@ public class Party {
 
     void remove(Session session) {
         members.remove(session);
+        slots.remove(session);
     }
 
     /**
@@ -268,7 +284,15 @@ public class Party {
      */
 
     public boolean isFull() {
-        return members.size() >= Constants.MAX_PARTY_SIZE;
+        return members.size() >= size;
+    }
+
+    /**
+     * @return How many players the party holds, the host included.
+     */
+
+    public int getSize() {
+        return size;
     }
 
     /**
@@ -291,7 +315,7 @@ public class Party {
         buffer.writeString(code);
         buffer.writeString(host.getName());
         buffer.writeUnsignedByte(members.size());
-        buffer.writeUnsignedByte(Constants.MAX_PARTY_SIZE);
+        buffer.writeUnsignedByte(size);
         buffer.writeString(description);
 
         return buffer;
@@ -310,6 +334,24 @@ public class Party {
 
         buffer.writeShort((short) bytes.length);
         buffer.writeBytes(bytes);
+
+        return buffer;
+    }
+
+    /**
+     * Writes each member's stable slot, which stays the member's while it is in the party.
+     * @return The member count, then each member's id and slot.
+     */
+
+    public OutputBuffer serializeSlots() {
+        OutputBuffer buffer = new OutputBuffer();
+
+        buffer.writeUnsignedByte(members.size());
+
+        for (Session member : members) {
+            buffer.writeInt(member.getId());
+            buffer.writeUnsignedByte(slots.getOrDefault(member, 0));
+        }
 
         return buffer;
     }

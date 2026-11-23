@@ -1,7 +1,7 @@
 package com.openrac.server.http;
 
 import com.openrac.server.Constants;
-import com.openrac.server.limits.RateLimit;
+import com.openrac.net.limits.RateLimit;
 
 import java.net.InetAddress;
 import java.util.LinkedHashMap;

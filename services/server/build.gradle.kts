@@ -1,7 +1,8 @@
-// The multiplayer server: links players into parties and forwards their traffic.
+// The game server: parties and their traffic, listed by a hub.
 plugins {
     id("openrac.java-conventions")
     application
+    alias(libs.plugins.shadow)
 }
 
 application {
@@ -10,8 +11,11 @@ application {
 
 dependencies {
     implementation(project(":common"))
+    implementation(project(":hub"))
     implementation(libs.netty.codec.http)
     implementation(libs.gson)
+
+    testImplementation(testFixtures(project(":common")))
 }
 
 tasks {
@@ -20,33 +24,20 @@ tasks {
         workingDir = rootProject.projectDir
     }
 
-    // One jar with every dependency inside, run by scripts/run_server.sh.
-    register<Jar>("buildServerJar") {
-        group = "build"
-        description = "Builds the server jar."
+    // Flyway, through the hub, finds its PostgreSQL support through service files.
+    shadowJar {
         archiveBaseName.set("openrac-server")
         archiveVersion.set("1.0.0")
         archiveClassifier.set("")
+        // The merge only sees every copy when duplicates reach it.
+        duplicatesStrategy = DuplicatesStrategy.INCLUDE
+        mergeServiceFiles()
+    }
 
-        // Resolving the runtime classpath compiles :common, so depend on it explicitly.
-        dependsOn(configurations.runtimeClasspath)
-
-        // The server's own classes and resources.
-        from(sourceSets["main"].output)
-
-        // Each runtime dependency's classes, unpacked into the jar.
-        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-        from({
-            configurations.runtimeClasspath.get()
-                .filter { it.name.endsWith(".jar") }
-                .map { zipTree(it) }
-        }) {
-            // Signature files would no longer match the merged jar.
-            exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "META-INF/SIG-*.SF", "META-INF/SIG-*.RSA")
-        }
-
-        manifest {
-            attributes["Main-Class"] = "com.openrac.server.Server"
-        }
+    // One jar with every dependency inside, run by scripts/run_server.sh.
+    register("buildServerJar") {
+        group = "build"
+        description = "Builds the server jar."
+        dependsOn(shadowJar)
     }
 }

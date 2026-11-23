@@ -1,4 +1,4 @@
-// OpenRAC multiplayer backend: the shared wire protocol and the server that runs it.
+// OpenRAC multiplayer backend: the wire protocol, the hub and the server.
 rootProject.name = "openrac-server"
 
 pluginManagement {
@@ -22,7 +22,8 @@ dependencyResolutionManagement {
     }
 }
 
-// The modules live under services/ but keep the project paths :common and :server.
-include("common", "server")
+// The modules live under services/ with the paths :common, :hub and :server.
+include("common", "hub", "server")
 project(":common").projectDir = file("services/common")
+project(":hub").projectDir = file("services/hub")
 project(":server").projectDir = file("services/server")

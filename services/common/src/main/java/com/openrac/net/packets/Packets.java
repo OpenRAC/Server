@@ -13,7 +13,14 @@ public enum Packets {
     ERROR,
     TIME,
     UDP,
-    RELAY;
+    RELAY,
+    REGIONS,
+    REGISTER,
+    UI, // Claimed by the UI descriptions, Server PR #4.
+    HUB,
+    SERVERS,
+    ACCOUNT,
+    STATS;
 
     /**
      * Resolves a packet from its id.

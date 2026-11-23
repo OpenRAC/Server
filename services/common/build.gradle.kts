@@ -3,6 +3,7 @@
 plugins {
     id("openrac.java-conventions")
     `java-library`
+    `java-test-fixtures`
 }
 
 dependencies {
@@ -11,4 +12,8 @@ dependencies {
 
     // Reads .env.defaults and .env for the environment.
     implementation(libs.dotenv.java)
+
+    // The embedded peer the services' tests send packets through.
+    testFixturesImplementation(platform(libs.junit.bom))
+    testFixturesImplementation(libs.junit.jupiter)
 }

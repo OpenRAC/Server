@@ -3,6 +3,8 @@ package com.openrac.server.net;
 import io.netty.channel.ChannelHandlerContext;
 
 import com.openrac.net.NetworkConstants;
+import com.openrac.net.limits.ConnectionLimit;
+import com.openrac.net.limits.RateLimit;
 import com.openrac.net.netty.handlers.PacketHandler;
 import com.openrac.net.packets.Opcodes;
 import com.openrac.net.packets.Packets;
@@ -14,14 +16,14 @@ import com.openrac.net.packets.out.HelloPacket;
 import com.openrac.net.packets.out.RelayPacket;
 import com.openrac.net.packets.out.TimePacket;
 import com.openrac.net.packets.out.UdpPacket;
-import com.openrac.server.Clock;
 import com.openrac.server.Constants;
 import com.openrac.server.Session;
 import com.openrac.server.SessionRegistry;
-import com.openrac.server.limits.ConnectionLimit;
-import com.openrac.server.limits.RateLimit;
+import com.openrac.server.hub.HubController;
 import com.openrac.server.party.Party;
 import com.openrac.server.party.PartyController;
+import com.openrac.utils.Clock;
+import com.openrac.utils.Utils;
 import com.openrac.utils.logger.Log;
 
 import java.net.InetAddress;
@@ -59,7 +61,7 @@ public class ServerPacketHandler extends PacketHandler {
     public void channelActive(ChannelHandlerContext ctx) {
         // Only network connections have an address to count against.
         if (ctx.channel().remoteAddress() instanceof InetSocketAddress remote) {
-            if (!ConnectionLimit.open(remote.getAddress())) {
+            if (!ConnectionLimit.open(remote.getAddress(), Constants.MAX_CONNECTIONS_PER_ADDRESS)) {
                 reject(ctx, "has too many connections open");
                 return;
             }
@@ -132,6 +134,7 @@ public class ServerPacketHandler extends PacketHandler {
             case CHAT -> handleChat(ctx, payload);
             case DATA -> handleData(payload);
             case RELAY -> handleRelay(payload);
+            case ACCOUNT -> handleAccount(ctx, payload);
             case TIME -> handleTime(payload);
 
             // Only the server reports errors.
@@ -139,6 +142,9 @@ public class ServerPacketHandler extends PacketHandler {
 
             // Only the server hands out UDP tokens.
             case UDP -> reject(ctx, "sent a UDP packet");
+
+            // The hub's packets, and the UI descriptions this server does not take.
+            case UI, REGIONS, REGISTER, HUB, SERVERS, STATS -> reject(ctx, "sent " + packet + ", which only the hub takes");
         }
     }
 
@@ -153,10 +159,12 @@ public class ServerPacketHandler extends PacketHandler {
             case PARTY -> partyLimit.take();
             case DATA -> dataLimit.take();
             case RELAY -> relayLimit.take();
+            // A token is proved once, like a party request.
+            case ACCOUNT -> partyLimit.take();
             case TIME -> timeLimit.take();
 
             // The greeting is once only, and server-only packets are rejected outright.
-            case HELLO, ERROR, UDP -> true;
+            case HELLO, ERROR, UDP, UI, REGIONS, REGISTER, HUB, SERVERS, STATS -> true;
         };
     }
 
@@ -198,12 +206,13 @@ public class ServerPacketHandler extends PacketHandler {
         int features = payload.size() > 0 ? payload.readUnsignedByte() : 0; // Older clients send none.
 
         // Blank or oversized fields only come from a broken client.
-        if (!isValid(version, Constants.MAX_VERSION_LENGTH) || !isValid(name, Constants.MAX_NAME_LENGTH)) {
+        if (!Utils.isValid(version, Constants.MAX_VERSION_LENGTH) || !Utils.isValid(name, Constants.MAX_NAME_LENGTH)) {
             reject(ctx, "sent an invalid hello");
             return;
         }
 
-        session = new Session(ctx.channel(), name, (features & NetworkConstants.CLIENT_RESUMES) != 0);
+        session = new Session(ctx.channel(), name, (features & NetworkConstants.CLIENT_RESUMES) != 0,
+                (features & NetworkConstants.CLIENT_SLOTS) != 0, (features & NetworkConstants.CLIENT_KEEPS_ALIVE) != 0);
 
         Log.info("Session " + session.getId() + " (" + name + ", version " + version + ") from " + ctx.channel().remoteAddress() + ".");
 
@@ -298,7 +307,7 @@ public class ServerPacketHandler extends PacketHandler {
         String message = payload.readString();
 
         // Blank or oversized messages only come from a broken client.
-        if (!isValid(message, Constants.MAX_CHAT_LENGTH)) {
+        if (!Utils.isValid(message, Constants.MAX_CHAT_LENGTH)) {
             reject(ctx, "sent an invalid chat message");
             return;
         }
@@ -357,6 +366,30 @@ public class ServerPacketHandler extends PacketHandler {
     }
 
     /**
+     * Proves a player's hub login: the hub says whose session the token is.
+     * @param ctx The channel handler context.
+     * @param payload The account packet's payload.
+     */
+
+    private void handleAccount(ChannelHandlerContext ctx, InputBuffer payload) {
+        // Logins happen at the hub, so a server only checks tokens.
+        if (Opcodes.Account.get(payload.readUnsignedByte()) != Opcodes.Account.TOKEN) {
+            reject(ctx, "sent an account opcode only the hub takes");
+            return;
+        }
+
+        String token = payload.readString();
+
+        // A token past the limit is no token the hub gave out.
+        if (!Utils.isValid(token, Constants.MAX_TOKEN_LENGTH)) {
+            reject(ctx, "sent an invalid token");
+            return;
+        }
+
+        HubController.verify(session, token);
+    }
+
+    /**
      * Answers a clock request with the client's own time and the server's.
      * @param payload The time packet's payload.
      */
@@ -377,7 +410,7 @@ public class ServerPacketHandler extends PacketHandler {
         String family = payload.size() > 0 ? payload.readString() : "";
 
         // A family is compared, never shown, so anything but short printable ASCII is a broken client.
-        if (family.length() > Constants.MAX_FAMILY_LENGTH || !family.chars().allMatch(c -> c > 0x20 && c <= 0x7E)) {
+        if (!family.isEmpty() && !Utils.isWord(family, Constants.MAX_FAMILY_LENGTH)) {
             reject(ctx, "sent an invalid game family");
             return null;
         }
@@ -409,15 +442,5 @@ public class ServerPacketHandler extends PacketHandler {
         String trimmed = kept.toString().strip();
 
         return trimmed.substring(0, Math.min(trimmed.length(), Constants.MAX_DESCRIPTION_LENGTH));
-    }
-
-    /**
-     * @param text A string read from the client.
-     * @param maxLength The most characters it may have.
-     * @return Whether the string is neither blank nor too long.
-     */
-
-    private static boolean isValid(String text, int maxLength) {
-        return !text.isBlank() && text.length() <= maxLength;
     }
 }
