@@ -92,7 +92,10 @@ public class HubController {
         channel = link;
         warned = false;
 
-        Log.notice("Registering " + Constants.NAME + " in region " + Constants.REGION_NAME + " with the hub at " + link.remoteAddress() + ".");
+        // An unnamed server logs under the process's name.
+        String title = Constants.SERVER_NAME.isEmpty() ? Constants.NAME : Constants.SERVER_NAME;
+
+        Log.notice("Registering " + title + " in region " + Constants.REGION + " with the hub at " + link.remoteAddress() + ".");
 
         link.writeAndFlush(getRegistration());
     }
@@ -267,8 +270,8 @@ public class HubController {
      */
 
     public static OutgoingPacket getRegistration() {
-        return new RegisterPacket(Constants.REGION_KEY, Constants.REGION_NAME, Constants.REGION_HOST, Constants.PORT, SessionRegistry.getCount(),
-                Constants.NAME);
+        return new RegisterPacket(Constants.REGION_KEY, Constants.REGION.name(), Constants.REGION_HOST, Constants.PORT, SessionRegistry.getCount(),
+                Constants.SERVER_NAME);
     }
 
     /**

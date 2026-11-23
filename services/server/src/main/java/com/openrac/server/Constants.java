@@ -1,8 +1,10 @@
 package com.openrac.server;
 
 import com.openrac.net.NetworkConstants;
+import com.openrac.net.packets.Regions;
 import com.openrac.server.hub.Mode;
 import com.openrac.system.Environment;
+import com.openrac.utils.Utils;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -21,7 +23,9 @@ public class Constants {
     public static final int HTTP_PORT = Environment.getInt("HTTP_PORT", 7771); // The mod set store.
 
     public static final Mode MODE = Mode.get(Environment.getString("MODE", Mode.REGION.getName())); // A region, or a region and its hub.
-    public static final String REGION_NAME = Environment.getString("REGION_NAME", "Local"); // Shown in the region list.
+    public static final String REGION_SETTING = readRegion(); // The code asked for, which may be unknown.
+    public static final Regions REGION = Regions.get(REGION_SETTING); // Null for an unknown code, which stops the server.
+    public static final String SERVER_NAME = Environment.getString("SERVER_NAME", "").strip(); // Empty: clients show the region alone.
     public static final String REGION_HOST = Environment.getString("REGION_HOST", ""); // Empty: the address the hub sees.
     public static final String HUB_ADDRESS = Environment.getString("HUB_ADDRESS", "hub.openrac.dev:7177"); // Where a region registers.
     public static final String REGION_KEY = Environment.getString("REGION_KEY", ""); // Sent to the hub, which may ask for one.
@@ -103,6 +107,22 @@ public class Constants {
     private static final Map<String, Integer> familyPartySizes = parseSizes(Environment.getString("FAMILY_PARTY_SIZES", DEFAULT_FAMILY_SIZES));
 
     /**
+     * Reads the region code from REGION. REGION_NAME, from before codes, stands in for one release
+     * while REGION is left at LOCAL.
+     * @return The code asked for, not yet checked against the list.
+     */
+
+    private static String readRegion() {
+        String region = Environment.getString("REGION", Regions.LOCAL.name());
+        String old = getOldRegion();
+
+        // Without REGION_NAME, or with REGION set, REGION decides.
+        if (old.isEmpty() || Regions.get(region) != Regions.LOCAL) return region;
+
+        return old;
+    }
+
+    /**
      * Reads the per-family party sizes.
      * @param text Pairs of a family and its size, as "family:size,...".
      * @return The sizes by family, each kept within the slot limit.
@@ -121,6 +141,22 @@ public class Constants {
         }
 
         return sizes;
+    }
+
+    /**
+     * @return REGION_NAME as an older .env sets it, empty when unset.
+     */
+
+    public static String getOldRegion() {
+        return Environment.getString("REGION_NAME", "").strip();
+    }
+
+    /**
+     * @return Whether SERVER_NAME fits the lists: printable ASCII within the length cap.
+     */
+
+    public static boolean isServerNameValid() {
+        return Utils.isPrintable(SERVER_NAME, NetworkConstants.MAX_SERVER_NAME_LENGTH);
     }
 
     /**

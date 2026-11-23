@@ -20,6 +20,8 @@ public class NetworkConstants {
     public static final int FEATURE_UI = 32; // UDP offer's feature bit: the server answers UI.
     public static final int FEATURE_SERVERS = 64; // UDP offer's feature bit: the hub streams SERVERS.
 
+    public static final int MAX_SERVER_NAME_LENGTH = 32; // A game server's name in REGISTER and the lists.
+
     public static final int LIST_ADVERTS = 1; // LIST request's flag bit: each listing ends with its advert.
 
     public static final int MAX_UI_LENGTH = 32_768; // Bytes of a UI description, as clients accept them.

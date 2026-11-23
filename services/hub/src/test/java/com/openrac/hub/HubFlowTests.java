@@ -146,13 +146,13 @@ public class HubFlowTests {
             Peer server = connect();
             Peer player = guest("Clank");
 
-            server.register("Polaris", 7800);
+            server.register("US", 7800);
 
-            Assertions.assertEquals(7800, regions(player).get("Polaris"));
+            Assertions.assertEquals(7800, regions(player).get("US"));
 
             server.channel.close();
 
-            Assertions.assertNull(regions(player).get("Polaris"));
+            Assertions.assertNull(regions(player).get("US"));
         }
 
         @Test
@@ -160,16 +160,69 @@ public class HubFlowTests {
         public void testInvalid() {
             Peer twice = connect();
 
-            twice.register("Polaris", 7800);
-            twice.send(new RegisterPacket("", "Polaris", "", 7800, 0, "box"));
+            twice.register("US", 7800);
+            twice.send(new RegisterPacket("", "US", "", 7800, 0, "box"));
 
             Assertions.assertFalse(twice.channel.isOpen());
 
             Peer badPort = connect();
 
-            badPort.send(new RegisterPacket("", "Veldin", "", 0, 0, "box"));
+            badPort.send(new RegisterPacket("", "CA", "", 0, 0, "box"));
 
             Assertions.assertFalse(badPort.channel.isOpen());
+        }
+
+        @Test
+        @DisplayName("A region must be a known code, in any case, and a name must fit the cap")
+        public void testRegionCodes() {
+            Peer unknown = connect();
+
+            unknown.send(new RegisterPacket("", "Polaris", "", 7800, 0, "box"));
+
+            Assertions.assertFalse(unknown.channel.isOpen());
+
+            Peer longName = connect();
+
+            longName.send(new RegisterPacket("", "US", "", 7800, 0, "x".repeat(NetworkConstants.MAX_SERVER_NAME_LENGTH + 1)));
+
+            Assertions.assertFalse(longName.channel.isOpen());
+
+            Peer lowerCase = connect();
+
+            lowerCase.send(new RegisterPacket("", "de", "", 7802, 0, "x".repeat(NetworkConstants.MAX_SERVER_NAME_LENGTH)));
+            lowerCase.receiveHub(Opcodes.Hub.REGISTERED);
+
+            Assertions.assertEquals(7802, regions(guest("Clank")).get("DE"));
+        }
+
+        @Test
+        @DisplayName("The region list carries each server's code, then every server's name")
+        public void testListing() {
+            connect().register("US", 7800);
+
+            Peer unnamed = connect();
+
+            unnamed.send(new RegisterPacket("", "GB", "", 7801, 0, ""));
+            unnamed.receiveHub(Opcodes.Hub.REGISTERED);
+
+            Peer player = guest("Clank");
+
+            player.send(new RegionsPacket("rac3-pal-1"));
+
+            InputBuffer payload = player.receive(Packets.REGIONS);
+
+            Assertions.assertEquals(2, payload.readUnsignedByte());
+
+            for (String code : List.of("US", "GB")) {
+                Assertions.assertEquals(code, payload.readString());
+                Assertions.assertEquals("", payload.readString());
+                payload.readInt();
+                payload.readInt();
+            }
+
+            Assertions.assertEquals("US box", payload.readString());
+            Assertions.assertEquals("", payload.readString());
+            Assertions.assertEquals(0, payload.size());
         }
 
         @Test
@@ -197,7 +250,7 @@ public class HubFlowTests {
         @DisplayName("Watchers hear a changed count and not an unchanged one")
         public void testChanged() {
             Peer server = connect();
-            int id = server.register("Polaris", 7800);
+            int id = server.register("US", 7800);
             Peer watcher = guest("Clank");
 
             watcher.send(new ServersPacket("rac3-pal-1"));
@@ -219,7 +272,7 @@ public class HubFlowTests {
         @DisplayName("A server that goes quiet is dropped and its watchers told")
         public void testSilence() {
             Peer server = connect();
-            int id = server.register("Polaris", 7800);
+            int id = server.register("US", 7800);
             Peer watcher = guest("Clank");
 
             watcher.send(new ServersPacket("rac3-pal-1"));
@@ -240,10 +293,10 @@ public class HubFlowTests {
         public void testClosing() {
             Peer server = connect();
 
-            server.register("Polaris", 7800);
+            server.register("US", 7800);
             server.send(new HubPacket(Opcodes.Hub.CLOSING));
 
-            Assertions.assertNull(regions(guest("Clank")).get("Polaris"));
+            Assertions.assertNull(regions(guest("Clank")).get("US"));
         }
     }
 
@@ -254,7 +307,7 @@ public class HubFlowTests {
         @Test
         @DisplayName("A watcher gets every server, then each new one")
         public void testWatch() {
-            connect().register("Polaris", 7800);
+            connect().register("US", 7800);
 
             Peer watcher = guest("Clank");
 
@@ -263,17 +316,17 @@ public class HubFlowTests {
             InputBuffer added = watcher.receiveServers(Opcodes.Servers.ADDED);
 
             added.readInt();
-            Assertions.assertEquals("Polaris", added.readString());
-            Assertions.assertEquals("Polaris box", added.readString());
+            Assertions.assertEquals("US", added.readString());
+            Assertions.assertEquals("US box", added.readString());
             Assertions.assertEquals("", added.readString());
             Assertions.assertEquals(7800, added.readInt());
 
-            connect().register("Veldin", 7801);
+            connect().register("CA", 7801);
 
             InputBuffer next = watcher.receiveServers(Opcodes.Servers.ADDED);
 
             next.readInt();
-            Assertions.assertEquals("Veldin", next.readString());
+            Assertions.assertEquals("CA", next.readString());
         }
     }
 
@@ -328,7 +381,7 @@ public class HubFlowTests {
             String token = loggedIn.readString();
             Peer server = connect();
 
-            server.register("Polaris", 7800);
+            server.register("US", 7800);
             server.send(new HubPacket(4, token));
 
             InputBuffer verified = server.receiveHub(Opcodes.Hub.VERIFIED);
@@ -408,7 +461,7 @@ public class HubFlowTests {
             Player ratchet = player("Ratchet");
             Peer server = connect();
 
-            server.register("Polaris", 7800);
+            server.register("US", 7800);
 
             GameResult.Player winner = new GameResult.Player(ratchet.id(), "Ratchet", 0, 12, 3, 1200, true);
             GameResult.Player guest = new GameResult.Player(0L, "Guest", 1, 3, 12, 300, false);

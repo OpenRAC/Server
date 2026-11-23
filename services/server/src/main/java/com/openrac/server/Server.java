@@ -12,6 +12,7 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.util.concurrent.Future;
 
 import com.openrac.hub.Hub;
+import com.openrac.net.NetworkConstants;
 import com.openrac.server.http.HttpChannelInitializer;
 import com.openrac.server.http.ModSetStore;
 import com.openrac.server.hub.HubController;
@@ -80,6 +81,9 @@ public class Server {
         Log.setLevel(Log.toLevel(Environment.getString("DEBUG_LEVEL", "all")));
         Log.setDebugging(Environment.getBoolean("DEBUGGING", false));
 
+        // A server the hub or its players could not name never starts.
+        if (!checkSettings()) System.exit(1);
+
         UiController.load(Path.of(Constants.UI_DIRECTORY));
 
         Server server = new Server();
@@ -88,6 +92,30 @@ public class Server {
         server.startModSets(Constants.HOST, Constants.HTTP_PORT);
 
         Runtime.getRuntime().addShutdownHook(new Thread(server::stop, "shutdown"));
+    }
+
+    /**
+     * Checks the region code and the server name before anything binds, logging what is wrong.
+     * @return Whether both are usable.
+     */
+
+    private static boolean checkSettings() {
+        // REGION_NAME is read for one release, then dropped.
+        if (!Constants.getOldRegion().isEmpty()) Log.warning("REGION_NAME is deprecated, set REGION to a region code (docs/configuration.md).");
+
+        // Clients can only name the codes they know.
+        if (Constants.REGION == null) {
+            Log.error("Unknown region code \"" + Constants.REGION_SETTING + "\", not starting. The codes are in docs/configuration.md.");
+            return false;
+        }
+
+        // The hub refuses a long name, and games draw ASCII only.
+        if (!Constants.isServerNameValid()) {
+            Log.error("SERVER_NAME must be at most " + NetworkConstants.MAX_SERVER_NAME_LENGTH + " printable ASCII characters, not starting.");
+            return false;
+        }
+
+        return true;
     }
 
     /**

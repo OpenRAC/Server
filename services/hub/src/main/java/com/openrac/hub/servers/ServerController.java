@@ -36,8 +36,8 @@ public class ServerController {
     /**
      * Lists a server that registered, and tells the watchers.
      * @param channel The server's connection.
-     * @param region The region players pick it by.
-     * @param name Its own name.
+     * @param region The code of the region players pick it by.
+     * @param name Its own name, empty for none.
      * @param host The address players reach it on, empty for the hub's.
      * @param port Its game port.
      * @param players How many players it has.
@@ -54,7 +54,10 @@ public class ServerController {
         servers.put(server.getId(), server);
         watchers.writeAndFlush(new ServersPacket(Opcodes.Servers.ADDED, server.serialize()));
 
-        Log.info("Server " + server.getId() + " (" + name + ") registered in region " + region + ".");
+        // A server without a name is known by its region alone.
+        String title = name.isEmpty() ? "" : " (" + name + ")";
+
+        Log.info("Server " + server.getId() + title + " registered in region " + region + ".");
 
         return server;
     }
@@ -125,15 +128,19 @@ public class ServerController {
     }
 
     /**
-     * @return The REGIONS answer: every listed server, as a region players can pick.
+     * @return The REGIONS answer: every listed server, as a region players can pick, then their names.
      */
 
     public static synchronized OutgoingPacket getRegionsPacket() {
         OutputBuffer listing = new OutputBuffer();
+        OutputBuffer names = new OutputBuffer();
 
-        for (GameServer server : servers.values()) listing.append(server.serializeRegion());
+        for (GameServer server : servers.values()) {
+            listing.append(server.serializeRegion());
+            names.writeString(server.getName());
+        }
 
-        return new RegionsPacket(servers.size(), listing);
+        return new RegionsPacket(servers.size(), listing, names);
     }
 
     /**

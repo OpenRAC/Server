@@ -53,4 +53,14 @@ public class Utils {
     public static boolean isWord(String text, int maxLength) {
         return !text.isEmpty() && text.length() <= maxLength && text.chars().allMatch(c -> c > 0x20 && c <= 0x7E);
     }
+
+    /**
+     * @param text A name shown to players, such as a server's.
+     * @param maxLength The most characters it may have.
+     * @return Whether it is at most maxLength characters of printable ASCII, spaces included.
+     */
+
+    public static boolean isPrintable(String text, int maxLength) {
+        return text.length() <= maxLength && text.chars().allMatch(c -> c >= 0x20 && c <= 0x7E);
+    }
 }

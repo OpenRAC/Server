@@ -95,7 +95,7 @@ public class HubLinkTests {
             InputBuffer regions = player.receive(Packets.REGIONS);
 
             Assertions.assertEquals(1, regions.readUnsignedByte());
-            Assertions.assertEquals(Constants.REGION_NAME, regions.readString());
+            Assertions.assertEquals(Constants.REGION.name(), regions.readString());
             Assertions.assertEquals("", regions.readString());
             Assertions.assertEquals(Constants.PORT, regions.readInt());
         }

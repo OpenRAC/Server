@@ -15,6 +15,7 @@ import com.openrac.net.limits.RateLimit;
 import com.openrac.net.netty.handlers.PacketHandler;
 import com.openrac.net.packets.Opcodes;
 import com.openrac.net.packets.Packets;
+import com.openrac.net.packets.Regions;
 import com.openrac.net.packets.model.GameResult;
 import com.openrac.net.packets.model.InputBuffer;
 import com.openrac.net.packets.out.ErrorPacket;
@@ -191,14 +192,20 @@ public class HubPacketHandler extends PacketHandler {
         }
 
         String key = payload.readString();
-        String region = payload.readString().strip();
+        Regions region = Regions.get(payload.readString());
         String host = payload.readString().strip();
         int port = payload.readInt();
         int players = payload.readInt();
-        String name = payload.size() > 0 ? payload.readString().strip() : region; // Servers from before names send none.
+        String name = payload.size() > 0 ? payload.readString().strip() : ""; // Servers from before names send none.
 
-        // A listed server needs names that fit and a real port.
-        if (!Utils.isValid(region, Constants.MAX_NAME_LENGTH) || !Utils.isValid(name, Constants.MAX_NAME_LENGTH) || port < 1 || port > 65_535) {
+        // Clients name regions by code, so only a listed one.
+        if (region == null) {
+            reject(ctx, "sent an unknown region code");
+            return;
+        }
+
+        // Games must draw the name, and players need a real port.
+        if (!Utils.isPrintable(name, NetworkConstants.MAX_SERVER_NAME_LENGTH) || port < 1 || port > 65_535) {
             reject(ctx, "sent an invalid registration");
             return;
         }
@@ -213,7 +220,7 @@ public class HubPacketHandler extends PacketHandler {
         if (host.isEmpty() && ctx.channel().remoteAddress() instanceof InetSocketAddress remote && !isPrivate(remote.getAddress()))
             host = remote.getAddress().getHostAddress();
 
-        server = ServerController.add(ctx.channel(), region, name, host, port, players, Clock.now());
+        server = ServerController.add(ctx.channel(), region.name(), name, host, port, players, Clock.now());
 
         // The list has a bound, and the server tries again later.
         if (server == null) {

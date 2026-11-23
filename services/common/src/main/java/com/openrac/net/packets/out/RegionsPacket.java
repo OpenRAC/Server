@@ -5,8 +5,9 @@ import com.openrac.net.packets.model.OutgoingPacket;
 import com.openrac.net.packets.model.OutputBuffer;
 
 /**
- * The hub's list of regions: count byte, then each region's name, host, port and players. An empty
- * host means the address the client reached the hub on.
+ * The hub's list of regions: count byte, then each region's code, host, port and players. An empty
+ * host means the address the client reached the hub on. Each server's name follows the list, in
+ * its order, appended so that older clients stop reading before it.
  */
 
 public class RegionsPacket extends OutgoingPacket {
@@ -24,13 +25,15 @@ public class RegionsPacket extends OutgoingPacket {
     /**
      * Hub to client: the regions.
      * @param count How many regions follow.
-     * @param regions Each region as {@code Region.serialize()} writes it.
+     * @param regions Each region as {@code GameServer.serializeRegion()} writes it.
+     * @param names Each server's name as a string, in the same order.
      */
 
-    public RegionsPacket(int count, OutputBuffer regions) {
+    public RegionsPacket(int count, OutputBuffer regions, OutputBuffer names) {
         super(Packets.REGIONS.ordinal());
 
         writeUnsignedByte(count);
         append(regions);
+        append(names);
     }
 }

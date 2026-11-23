@@ -15,8 +15,8 @@ public class GameServer {
     private final int id;
     private final Channel channel;
 
-    private final String region;
-    private final String name;
+    private final String region; // A Regions code.
+    private final String name; // Empty: clients show the region alone.
     private final String host; // Empty: the address the player reached the hub on.
     private final int port;
 
@@ -29,8 +29,8 @@ public class GameServer {
      * Creates a listed server.
      * @param id Its id in the hub's list.
      * @param channel Its connection to the hub.
-     * @param region The region players pick it by.
-     * @param name Its own name, which tells one region's servers apart.
+     * @param region The code of the region players pick it by, such as "US".
+     * @param name Its own name, which tells one region's servers apart, empty for none.
      * @param host The address players reach it on, empty for the hub's.
      * @param port Its game port.
      * @param players How many players it has.
