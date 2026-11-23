@@ -52,7 +52,9 @@ The scripts run the jars with ZGC and compact object headers. How a service shut
 ## Docker
 
 The image holds both services, built with the JDK and run on the JRE alone as a non-root user. Only
-Docker is needed: no Java or Gradle on the host.
+Docker is needed: no Java or Gradle on the host. Each release also publishes it as
+`ghcr.io/openrac/server`, tagged with the version (`v1.2.0`) and `latest`, so `docker build` can be
+skipped by pulling that instead.
 
 ### Docker Compose
 

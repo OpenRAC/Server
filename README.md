@@ -1,5 +1,8 @@
 # OpenRAC Server
 
+[![CI](https://github.com/OpenRAC/Server/actions/workflows/ci.yml/badge.svg)](https://github.com/OpenRAC/Server/actions/workflows/ci.yml)
+[![Release](https://github.com/OpenRAC/Server/actions/workflows/release.yml/badge.svg)](https://github.com/OpenRAC/Server/actions/workflows/release.yml)
+
 The multiplayer backend for OpenRAC. A game first reaches the **hub** (`hub.openrac.dev`, port
 7177), which keeps the accounts and stats and lists the **game servers** that registered with it,
 one or more per region. The game then plays on the game server it picked, which links players into
@@ -55,7 +58,7 @@ Set `DATABASE_PASSWORD` in a `.env` first. The other setups, the jars and the po
 | [Database](docs/database.md) | PostgreSQL, Flyway migrations, the schema, the in-memory mode |
 | [Configuration](docs/configuration.md) | Every setting in `.env.defaults`, with its default and meaning |
 | [Self-hosting](docs/self-hosting.md) | The four setups, Docker, jars, ports to open |
-| [Development](docs/development.md) | Building, testing, the source layout, adding a packet |
+| [Development](docs/development.md) | Building, testing, the checks, CI and releases, the source layout, adding a packet |
 | [Coding conventions](docs/CODING_CONVENTIONS.md) | The rules every change follows |
 
 The index with reading paths is [docs/README.md](docs/README.md).

@@ -25,5 +25,5 @@ One topic per file. Each fact lives in one file, and the others link to it.
 
 ## Working on the code
 
-- [Development](development.md): building, testing, the layout and adding a packet.
+- [Development](development.md): building, testing, the checks, CI and releases, the layout and adding a packet.
 - [Coding conventions](CODING_CONVENTIONS.md): the rules every change follows.

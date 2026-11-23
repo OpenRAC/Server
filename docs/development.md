@@ -26,16 +26,70 @@ TEST_DATABASE_URL=jdbc:postgresql://localhost:5432/openrac_test TEST_DATABASE_PA
 
 | Module | Tests |
 |---|---|
-| `:common` | `PacketCodecTests`, `RateLimitTests`; the shared embedded peer is in `src/testFixtures` (`EmbeddedPeer`) |
-| `:hub` | `HubFlowTests`, `PostgresStoreTests` |
-| `:server` | `DatagramFlowTests`, `HubLinkTests`, `PartyFlowTests`, `ResumeFlowTests`, `RoomFlowTests`, `UiFlowTests`, `http/ModSetFlowTests` |
+| `:common` | `PacketCodecTests`, `RateLimitTests`, `RegionsTests`, `limits/ConnectionLimitTests`, `system/EnvironmentTests`; the shared embedded peer is in `src/testFixtures` (`EmbeddedPeer`) |
+| `:hub` | `HubFlowTests`, `MemoryStoreTests`, `PostgresStoreTests`; both store tests run `StoreContract`, so the memory stores behave as PostgreSQL's |
+| `:server` | `DatagramFlowTests`, `HubLinkTests`, `NetworkFlowTests`, `PartyFlowTests`, `ResumeFlowTests`, `RoomFlowTests`, `UiFlowTests`, `http/ModSetFlowTests` |
+
+Most tests run a service's real pipeline on Netty's `EmbeddedChannel`. `NetworkFlowTests` starts a
+hub and a game server on real loopback sockets instead, linked as a region is, and takes a few
+seconds for the heartbeat.
+
+## Checks
+
+Three scripts in `scripts/` check what the build does not. Each needs only Python 3:
+
+```sh
+python3 scripts/check_conventions.py --all                  # every tracked file
+python3 scripts/check_conventions.py --base origin/master    # the files this branch changed
+python3 scripts/check_links.py                              # links and anchors in README.md and docs/
+python3 scripts/smoke_test.py                               # against a running docker compose up
+```
+
+`check_conventions.py` counts the rules of [CODING_CONVENTIONS.md](CODING_CONVENTIONS.md) that a
+script can: `var` declarations, single statements in braces, `//` comments over 12 words or three
+lines tall, end-of-line comments anywhere but on fields and constants, classes and public or
+protected methods without JavaDoc, `import static`, and em dashes in any file (and in commit
+messages, with `--commits BASE..HEAD`). Test methods and `@Nested` test classes carry a
+`@DisplayName` instead of JavaDoc. The rest of the self-check (a comment per branch, comments that
+restate their line, member order, reuse, wire values in `:common`) still needs a reader.
+
+`smoke_test.py` plays a client's first steps against a running hub and game server: `HELLO` and
+`ACCOUNT LOGIN` at the hub, `REGIONS` until the game server is listed, then `HELLO` and
+`ACCOUNT TOKEN` at the game server.
+
+## CI and releases
+
+GitHub Actions runs `.github/workflows/ci.yml` on every push and pull request:
+
+| Job | What it does |
+|---|---|
+| Build and test | `./gradlew build` on JDK 25, against a `postgres:18` service so `PostgresStoreTests` runs (and fails the job if it skipped); the test reports are uploaded when it fails |
+| Coding conventions | `check_conventions.py` on the files and commit messages since the base, then on every file |
+| Docs links | `check_links.py` |
+| Docker image | builds the `Dockerfile` |
+| Compose smoke test | `docker compose up` (PostgreSQL, the hub, a game server), then `smoke_test.py`, printing the services' logs |
+
+To run the PostgreSQL tests the way CI does:
+
+```sh
+docker run -d --rm --name openrac-test-db -p 5432:5432 -e POSTGRES_DB=openrac_test \
+    -e POSTGRES_USER=openrac -e POSTGRES_PASSWORD=openrac postgres:18
+TEST_DATABASE_URL=jdbc:postgresql://localhost:5432/openrac_test TEST_DATABASE_PASSWORD=openrac ./gradlew :hub:test
+```
+
+Pushing a version tag (`git tag v1.2.0 && git push origin v1.2.0`) runs
+`.github/workflows/release.yml`: it builds and tests, attaches `openrac-hub-1.2.0.jar`,
+`openrac-server-1.2.0.jar` and their `SHA256SUMS` to a GitHub release, and pushes the image to
+`ghcr.io/openrac/server` as `v1.2.0` and `latest`. Nothing is deployed: the servers are updated by
+whoever runs them.
 
 ## Layout
 
 ```
 build-logic/         Gradle convention plugin (openrac.java-conventions)
 gradle/              the wrapper and libs.versions.toml, the one list of dependency versions
-scripts/             run_hub.sh and run_server.sh, which run the built jars
+scripts/             run_hub.sh and run_server.sh, which run the built jars, and the checks
+.github/workflows/   ci.yml (every push) and release.yml (version tags)
 services/common/     :common, package com.openrac
   net/                 NetworkConstants, codecs, the Netty pipeline, limits, datagrams
   net/packets/         Packets, Opcodes, buffers and the GameResult record
