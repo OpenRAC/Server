@@ -137,6 +137,25 @@ public class NetworkFlowTests {
     }
 
     /**
+     * Says hello to the hub, waits for the game server's listing, then watches the server list.
+     * @param watcher A new connection to the hub.
+     * @return The ADDED payload of the game server, after its opcode.
+     * @throws InterruptedException If the wait is interrupted.
+     */
+
+    private static InputBuffer watch(SocketClient watcher) throws InterruptedException {
+        watcher.hello("Clank");
+        awaitListed(watcher);
+        watcher.send(new ServersPacket(FAMILY));
+
+        InputBuffer added = watcher.receive(Packets.SERVERS);
+
+        Assertions.assertEquals(Opcodes.Servers.ADDED, Opcodes.Servers.get(added.readUnsignedByte()));
+
+        return added;
+    }
+
+    /**
      * Logs in at the hub, registering the name.
      * @param client A client that said hello to the hub.
      * @param name The account name.
@@ -185,15 +204,7 @@ public class NetworkFlowTests {
         @DisplayName("The heartbeat carries the game server's player count to the hub's watchers")
         public void testHeartbeat() throws InterruptedException {
             SocketClient watcher = connect(hubPort);
-
-            watcher.hello("Clank");
-            awaitListed(watcher);
-            watcher.send(new ServersPacket(FAMILY));
-
-            InputBuffer added = watcher.receive(Packets.SERVERS);
-
-            Assertions.assertEquals(Opcodes.Servers.ADDED, Opcodes.Servers.get(added.readUnsignedByte()));
-
+            InputBuffer added = watch(watcher);
             int serverId = added.readInt();
 
             added.readString();
@@ -216,16 +227,7 @@ public class NetworkFlowTests {
         @DisplayName("A closing game server leaves the hub's list at once")
         public void testClosing() throws InterruptedException {
             SocketClient watcher = connect(hubPort);
-
-            watcher.hello("Clank");
-            awaitListed(watcher);
-            watcher.send(new ServersPacket(FAMILY));
-
-            InputBuffer added = watcher.receive(Packets.SERVERS);
-
-            Assertions.assertEquals(Opcodes.Servers.ADDED, Opcodes.Servers.get(added.readUnsignedByte()));
-
-            int serverId = added.readInt();
+            int serverId = watch(watcher).readInt();
 
             HubController.stop();
 

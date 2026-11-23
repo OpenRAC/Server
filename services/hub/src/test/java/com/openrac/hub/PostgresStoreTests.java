@@ -140,15 +140,25 @@ public class PostgresStoreTests {
         }
 
         /**
-         * Says hello and logs in.
+         * Says hello and logs in on a new connection.
          * @param name The account name.
          * @param password The password.
          * @return The LOGGED_IN payload after its opcode.
          */
 
         private InputBuffer login(String name, String password) {
-            Peer peer = connect();
+            return login(connect(), name, password);
+        }
 
+        /**
+         * Says hello and logs in.
+         * @param peer The connection to log in on.
+         * @param name The account name.
+         * @param password The password.
+         * @return The LOGGED_IN payload after its opcode.
+         */
+
+        private InputBuffer login(Peer peer, String name, String password) {
             peer.hello(name);
             peer.send(new AccountPacket(name, password));
 
@@ -209,15 +219,7 @@ public class PostgresStoreTests {
         public void testResult() {
             String name = "R" + UUID.randomUUID().toString().substring(0, 8);
             Peer player = connect();
-
-            player.hello(name);
-            player.send(new AccountPacket(name, "lombax"));
-
-            InputBuffer loggedIn = player.receive(Packets.ACCOUNT);
-
-            loggedIn.readUnsignedByte();
-
-            long id = loggedIn.readLong();
+            long id = login(player, name, "lombax").readLong();
             Peer server = connect();
 
             server.register("DE", 7801);
