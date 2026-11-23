@@ -136,7 +136,7 @@ Names and versions are 1 to 32 characters, chat messages 1 to 256. Parties hold 
 | 8 | `REGIONS` | client → hub | the game family string |
 | | | hub → client | count byte, then per game server: region name string, host string (empty: the address the client reached the hub on), port int, players int |
 | 9 | `REGISTER` | game server → hub | key string, region name string, host string (empty: see [The hub](#the-hub)), port int, players int, server name string; the first packet on the link, instead of `HELLO` |
-| 10 | `UI` | | claimed by the UI descriptions (Server PR #4) |
+| 10 | `UI` | both | opcode byte, then as below ([Lobby screens](#lobby-screens)) |
 | 11 | `HUB` | both | opcode byte, then as below: a game server's link to the hub |
 | 12 | `SERVERS` | both | opcode byte, then as below: the live game server list |
 | 13 | `ACCOUNT` | both | opcode byte, then as below: logins at the hub, and proving them to a game server |
@@ -237,8 +237,7 @@ password the hub does not take), 11 `SESSION_INVALID` (an unknown, expired or en
 
 `UDP`'s feature bits say which requests this server takes, since an unknown one closes the
 connection: bit 0 (1) `KICK`, bit 1 (2) `RESUME`, bit 2 (4) `ADVERT`, bit 3 (8) `RELAY`, bit 4 (16)
-`REGIONS`, bit 6 (64) `SERVERS`. A client from before them stops reading at the port. Bit 5 (32) is
-claimed by the UI descriptions. The hub sends a `UDP` offer too, with token and port 0 (it takes no
+`REGIONS`, bit 5 (32) `UI`, bit 6 (64) `SERVERS`. A client from before them stops reading at the port. The hub sends a `UDP` offer too, with token and port 0 (it takes no
 datagrams) and bits 16 and 64; a game server sends neither, since the list is the hub's.
 
 A client that can come back says so with a byte after its name in `HELLO` (bit 0); bit 1 asks for `SLOTS`. Its connection
@@ -286,6 +285,32 @@ A family is up to 32 characters of printable ASCII without spaces; anything else
 refused: with `OTHER_GAME` and the party's family when the client named its own, so the game can
 say which game it is for, and with `PARTY_NOT_FOUND` when it did not, as an older client knows no
 other reason.
+
+## Lobby screens
+
+A game whose multiplayer menus are drawn natively (Up Your Arsenal) asks the server which screens to
+show: their lists' columns, the rows shown at once, extra screens, options, a message of the day and
+announcements, and the largest room. The answer is a UI description, JSON of schema 1
+(`UI_SCHEMA`), at most 32,768 bytes (`MAX_UI_LENGTH`); the game checks it whole and keeps its own
+menus when it is missing or refused. The schema is OpenRAC's `docs/port/MULTIPLAYER_UI.md`.
+
+| Opcode | Name | Direction | Payload |
+|---|---|---|---|
+| 0 | `GET` | client → server | the game family string |
+| 1 | `DESCRIPTION` | server → client | revision int, then the JSON's UTF-8 bytes to the end of the frame; none (empty) keeps the game's own screens |
+| 2 | `ACTION` | client → server | action key string (32 characters at most), value int: a `server:<key>` action the player chose |
+| 3 | `NOTICE` | server → client | a line the game shows, answering an action |
+
+Hosts customise the screens with files in `UI_DIRECTORY` (`ui`): `<family>.json` for one disc
+(`rac3-pal-1`), else `<game>.json` for every disc of a game (`rac3`), else the server's built-in
+description of that game, which describes its menus as they are (`services/server/src/main/resources/ui`).
+Files are read at start; an invalid one is logged and skipped. A file may hold a `server` block
+that never reaches clients: `{"notices": {"<key>": "line"}}` answers the actions it names.
+Requests share the `UI_BURST` / `UI_PER_SECOND` rate.
+
+What a description can offer (custom modes on a stock mode, custom maps loading a stock level,
+per-game rules the host sets) follows the Horizon Private Server project
+(https://github.com/Horizon-Private-Server/horizon-server), read for reference only.
 
 ## UDP
 

@@ -32,11 +32,12 @@ public class Constants {
 
     // What the UDP offer says this server takes.
     public static final int FEATURES = NetworkConstants.FEATURE_KICK | NetworkConstants.FEATURE_RESUME | NetworkConstants.FEATURE_ADVERT
-            | NetworkConstants.FEATURE_RELAY;
+            | NetworkConstants.FEATURE_RELAY | NetworkConstants.FEATURE_UI;
 
     public static final int MAX_NAME_LENGTH = 32;
     public static final int MAX_CHAT_LENGTH = 256;
     public static final int MAX_FAMILY_LENGTH = 32;
+    public static final int MAX_UI_KEY_LENGTH = 32; // A UI action key, an identifier of the description.
     public static final int MAX_DESCRIPTION_LENGTH = Environment.getInt("MAX_DESCRIPTION_LENGTH", 48);
     public static final int MAX_ADVERT_LENGTH = Environment.getInt("MAX_ADVERT_LENGTH", 512); // Bytes a host may list its party with.
 
@@ -60,6 +61,8 @@ public class Constants {
     public static final int RELAY_PER_SECOND = Environment.getInt("RELAY_PER_SECOND", 120);
     public static final int TIME_BURST = Environment.getInt("TIME_BURST", 5);
     public static final int TIME_PER_SECOND = Environment.getInt("TIME_PER_SECOND", 2);
+    public static final int UI_BURST = Environment.getInt("UI_BURST", 5);
+    public static final int UI_PER_SECOND = Environment.getInt("UI_PER_SECOND", 1);
 
     // Dropped packets a connection may run up before it is closed.
     public static final int STRIKE_BURST = Environment.getInt("STRIKE_BURST", 20);
@@ -87,6 +90,9 @@ public class Constants {
     public static final int MODSET_PUTS_PER_MINUTE = Environment.getInt("MODSET_PUTS_PER_MINUTE", 10); // Per address.
     public static final int MODSET_GETS_PER_MINUTE = Environment.getInt("MODSET_GETS_PER_MINUTE", 60); // Per address.
     public static final int HTTP_TIMEOUT_SECONDS = Environment.getInt("HTTP_TIMEOUT_SECONDS", 10); // Whole request, or closed.
+
+    // Hosts' UI descriptions, one file per family or game.
+    public static final String UI_DIRECTORY = Environment.getString("UI_DIRECTORY", "ui");
 
     public static final int MODSET_CODE_LENGTH = 8; // 40 bits of the alphabet below.
     public static final int CODE_LENGTH = 6;

@@ -16,7 +16,7 @@ public enum Packets {
     RELAY,
     REGIONS,
     REGISTER,
-    UI, // Claimed by the UI descriptions, Server PR #4.
+    UI,
     HUB,
     SERVERS,
     ACCOUNT,

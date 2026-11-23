@@ -42,6 +42,27 @@ public final class Opcodes {
     }
 
     /**
+     * The UI packet's opcodes: a game's lobby screens and the actions chosen on them.
+     */
+
+    public enum Ui {
+        GET, // Client asks for its game family's screens.
+        DESCRIPTION, // Server sends the screens, or none for the game's own.
+        ACTION, // Client chose a server action on a screen.
+        NOTICE; // Server answers an action with a line to show.
+
+        /**
+         * Resolves a UI opcode from its byte.
+         * @param id The opcode byte read from the wire.
+         * @return The matching opcode, or null if the byte is out of range.
+         */
+
+        public static Ui get(int id) {
+            return Opcodes.get(values(), id);
+        }
+    }
+
+    /**
      * Reasons the ERROR packet gives for a refused party or hub request.
      */
 

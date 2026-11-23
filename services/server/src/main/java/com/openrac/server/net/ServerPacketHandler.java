@@ -22,6 +22,7 @@ import com.openrac.server.SessionRegistry;
 import com.openrac.server.hub.HubController;
 import com.openrac.server.party.Party;
 import com.openrac.server.party.PartyController;
+import com.openrac.server.ui.UiController;
 import com.openrac.utils.Clock;
 import com.openrac.utils.Utils;
 import com.openrac.utils.logger.Log;
@@ -48,6 +49,7 @@ public class ServerPacketHandler extends PacketHandler {
     private final RateLimit dataLimit = new RateLimit(Constants.DATA_BURST, Constants.DATA_PER_SECOND);
     private final RateLimit relayLimit = new RateLimit(Constants.RELAY_BURST, Constants.RELAY_PER_SECOND);
     private final RateLimit timeLimit = new RateLimit(Constants.TIME_BURST, Constants.TIME_PER_SECOND);
+    private final RateLimit uiLimit = new RateLimit(Constants.UI_BURST, Constants.UI_PER_SECOND);
     private final RateLimit strikeLimit = new RateLimit(Constants.STRIKE_BURST, Constants.STRIKES_FORGIVEN_PER_SECOND);
 
     private boolean warned; // Whether this connection's first dropped packet was logged.
@@ -136,6 +138,7 @@ public class ServerPacketHandler extends PacketHandler {
             case RELAY -> handleRelay(payload);
             case ACCOUNT -> handleAccount(ctx, payload);
             case TIME -> handleTime(payload);
+            case UI -> handleUi(ctx, payload);
 
             // Only the server reports errors.
             case ERROR -> reject(ctx, "sent an error packet");
@@ -143,8 +146,8 @@ public class ServerPacketHandler extends PacketHandler {
             // Only the server hands out UDP tokens.
             case UDP -> reject(ctx, "sent a UDP packet");
 
-            // The hub's packets, and the UI descriptions this server does not take.
-            case UI, REGIONS, REGISTER, HUB, SERVERS, STATS -> reject(ctx, "sent " + packet + ", which only the hub takes");
+            // The hub's packets, which a game server does not take.
+            case REGIONS, REGISTER, HUB, SERVERS, STATS -> reject(ctx, "sent " + packet + ", which only the hub takes");
         }
     }
 
@@ -162,9 +165,10 @@ public class ServerPacketHandler extends PacketHandler {
             // A token is proved once, like a party request.
             case ACCOUNT -> partyLimit.take();
             case TIME -> timeLimit.take();
+            case UI -> uiLimit.take();
 
             // The greeting is once only, and server-only packets are rejected outright.
-            case HELLO, ERROR, UDP, UI, REGIONS, REGISTER, HUB, SERVERS, STATS -> true;
+            case HELLO, ERROR, UDP, REGIONS, REGISTER, HUB, SERVERS, STATS -> true;
         };
     }
 
@@ -396,6 +400,39 @@ public class ServerPacketHandler extends PacketHandler {
 
     private void handleTime(InputBuffer payload) {
         session.send(new TimePacket(payload.readLong(), Clock.now()));
+    }
+
+    /**
+     * Runs a request about the screens a game's multiplayer menus show.
+     * @param ctx The channel handler context.
+     * @param payload The UI packet's payload.
+     */
+
+    private void handleUi(ChannelHandlerContext ctx, InputBuffer payload) {
+        Opcodes.Ui opcode = Opcodes.Ui.get(payload.readUnsignedByte());
+
+        switch (opcode) {
+            case GET -> {
+                String family = readFamily(ctx, payload);
+
+                if (family != null) UiController.handleGet(session, orDefault(family));
+            }
+            case ACTION -> {
+                String key = payload.readString();
+                int value = payload.readInt();
+
+                // Only a broken client sends an action key this long.
+                if (!Utils.isValid(key, Constants.MAX_UI_KEY_LENGTH)) {
+                    reject(ctx, "sent an invalid UI action");
+                    return;
+                }
+
+                UiController.handleAction(session, key, value);
+            }
+
+            // The rest are answers only the server sends.
+            case null, default -> reject(ctx, "sent an invalid UI opcode");
+        }
     }
 
     /**

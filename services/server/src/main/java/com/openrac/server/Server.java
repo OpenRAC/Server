@@ -19,6 +19,7 @@ import com.openrac.server.hub.Mode;
 import com.openrac.server.net.ServerChannelInitializer;
 import com.openrac.server.net.ServerDatagramHandler;
 import com.openrac.server.party.PartyController;
+import com.openrac.server.ui.UiController;
 import com.openrac.system.Environment;
 import com.openrac.utils.Clock;
 import com.openrac.utils.logger.Log;
@@ -78,6 +79,8 @@ public class Server {
 
         Log.setLevel(Log.toLevel(Environment.getString("DEBUG_LEVEL", "all")));
         Log.setDebugging(Environment.getBoolean("DEBUGGING", false));
+
+        UiController.load(Path.of(Constants.UI_DIRECTORY));
 
         Server server = new Server();
 
