@@ -1,23 +1,35 @@
 package com.openrac.hub;
 
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import com.openrac.hub.accounts.Account;
+import com.openrac.hub.accounts.AccountController;
+import com.openrac.hub.accounts.AccountStore;
+import com.openrac.hub.accounts.MemoryAccountStore;
 import com.openrac.hub.accounts.PostgresAccountStore;
 import com.openrac.hub.database.Database;
 import com.openrac.hub.database.Sql;
+import com.openrac.hub.stats.MemoryStatsStore;
 import com.openrac.hub.stats.PostgresStatsStore;
+import com.openrac.hub.stats.StatsController;
 import com.openrac.hub.stats.StatsStore;
+import com.openrac.net.packets.Opcodes;
+import com.openrac.net.packets.Packets;
 import com.openrac.net.packets.model.GameResult;
+import com.openrac.net.packets.model.InputBuffer;
+import com.openrac.net.packets.model.OutputBuffer;
+import com.openrac.net.packets.out.AccountPacket;
+import com.openrac.net.packets.out.HubPacket;
+import com.openrac.net.packets.out.StatsPacket;
 
-import java.time.Duration;
-import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -66,77 +78,166 @@ public class PostgresStoreTests {
 
     @Nested
     @DisplayName("Postgres Store Tests")
-    class PostgresTests {
+    class PostgresTests extends StoreContract {
 
-        @Test
-        @DisplayName("A name registers once, in any case, and is found again")
-        public void testAccounts() {
-            String name = "T" + UUID.randomUUID().toString().substring(0, 8);
-            Account created = store.create(name, "hash");
+        /**
+         * @return The PostgreSQL account store.
+         */
 
-            Assertions.assertNotNull(created);
-            Assertions.assertNull(store.create(name.toLowerCase(), "other"));
-            Assertions.assertEquals(created.id(), store.find(name.toUpperCase()).id());
+        @Override
+        protected AccountStore getAccounts() {
+            return store;
+        }
 
-            store.touch(created.id());
+        /**
+         * @return The PostgreSQL stats store.
+         */
+
+        @Override
+        protected StatsStore getStats() {
+            return stats;
+        }
+    }
+
+    @Nested
+    @DisplayName("Postgres Login Tests")
+    class LoginTests {
+        private final List<Peer> peers = new ArrayList<>();
+
+        /**
+         * Points the hub at the database, worked on the calling thread.
+         */
+
+        @BeforeEach
+        public void useDatabase() {
+            AccountController.setStore(store);
+            StatsController.setStore(stats);
+            Background.setExecutor(Runnable::run);
+        }
+
+        /**
+         * Closes every peer and puts the memory stores back.
+         */
+
+        @AfterEach
+        public void useMemory() {
+            for (Peer peer : peers) peer.channel.close();
+
+            AccountController.setStore(new MemoryAccountStore());
+            StatsController.setStore(new MemoryStatsStore());
+        }
+
+        /**
+         * @return A new connection to the hub.
+         */
+
+        private Peer connect() {
+            Peer peer = new Peer();
+
+            peers.add(peer);
+
+            return peer;
+        }
+
+        /**
+         * Says hello and logs in.
+         * @param name The account name.
+         * @param password The password.
+         * @return The LOGGED_IN payload after its opcode.
+         */
+
+        private InputBuffer login(String name, String password) {
+            Peer peer = connect();
+
+            peer.hello(name);
+            peer.send(new AccountPacket(name, password));
+
+            InputBuffer payload = peer.receive(Packets.ACCOUNT);
+
+            Assertions.assertEquals(Opcodes.Account.LOGGED_IN, Opcodes.Account.get(payload.readUnsignedByte()));
+
+            return payload;
         }
 
         @Test
-        @DisplayName("A session is found until it expires or ends")
-        public void testSessions() {
-            Account account = store.create("S" + UUID.randomUUID().toString().substring(0, 8), "hash");
-            String token = UUID.randomUUID().toString();
-            Instant now = Instant.now();
+        @DisplayName("A first login registers in the database, and a game server verifies its token")
+        public void testLoginAndVerify() {
+            String name = "D" + UUID.randomUUID().toString().substring(0, 8);
+            InputBuffer first = login(name, "lombax");
+            long id = first.readLong();
 
-            store.addSession(token, account.id(), now.plus(Duration.ofMinutes(5)));
+            first.readString();
 
-            Assertions.assertEquals(account.id(), store.findSession(token, now).id());
-            Assertions.assertNull(store.findSession(token, now.plus(Duration.ofMinutes(10))));
+            String token = first.readString();
 
-            store.removeSession(token);
+            Assertions.assertEquals(1, first.readUnsignedByte());
+            Assertions.assertEquals(id, store.find(name).id());
 
-            Assertions.assertNull(store.findSession(token, now));
+            InputBuffer again = login(name.toLowerCase(), "lombax");
 
-            store.removeExpired(now);
+            Assertions.assertEquals(id, again.readLong());
+
+            Peer server = connect();
+
+            server.register("US", 7800);
+            server.send(new HubPacket(7, token));
+
+            InputBuffer verified = server.receiveHub(Opcodes.Hub.VERIFIED);
+
+            Assertions.assertEquals(7, verified.readInt());
+            Assertions.assertEquals(id, verified.readLong());
+            Assertions.assertEquals(name, verified.readString());
         }
 
         @Test
-        @DisplayName("A reported game adds to totals, and guests only get a line")
-        public void testGames() {
-            Account account = store.create("G" + UUID.randomUUID().toString().substring(0, 8), "hash");
-            GameResult.Player player = new GameResult.Player(account.id(), account.name(), 0, 4, 2, 100, true);
-            GameResult.Player guest = new GameResult.Player(0L, "Guest", 1, 2, 4, 50, false);
+        @DisplayName("A wrong password is refused against the stored hash")
+        public void testWrongPassword() {
+            String name = "W" + UUID.randomUUID().toString().substring(0, 8);
 
-            stats.recordGame("Europe", "Box", new GameResult("rac3-pal-1", "Siege", 2, 41, 300, 0, List.of(player, guest)));
-            stats.recordGame("Europe", "Box", new GameResult("rac3-pal-1", "Siege", 2, 41, 300, 1, List.of(player)));
+            login(name, "lombax");
 
-            Assertions.assertEquals(new StatsStore.Totals(2, 2, 8, 4, 200), stats.getTotals(account.id(), "rac3-pal-1"));
-            Assertions.assertEquals(new StatsStore.Totals(0, 0, 0, 0, 0), stats.getTotals(account.id(), "rac1-60-1"));
+            Peer thief = connect();
+
+            thief.hello("Nefarious");
+            thief.send(new AccountPacket(name, "robots"));
+
+            Assertions.assertEquals(Opcodes.Error.WRONG_PASSWORD, thief.receiveError());
         }
 
         @Test
-        @DisplayName("A ladder sorts by the asked value and finds an account's position")
-        public void testLadder() {
-            String family = "test-" + UUID.randomUUID().toString().substring(0, 8);
-            Account high = store.create("H" + UUID.randomUUID().toString().substring(0, 8), "hash");
-            Account low = store.create("L" + UUID.randomUUID().toString().substring(0, 8), "hash");
+        @DisplayName("A game result a server reports reaches the database's totals")
+        public void testResult() {
+            String name = "R" + UUID.randomUUID().toString().substring(0, 8);
+            Peer player = connect();
 
-            stats.writeLadder(high, family, 0, new int[] { 1, 90 });
-            stats.writeLadder(low, family, 0, new int[] { 2, 10 });
-            stats.writeLadder(low, family, 0, new int[] { 2, 20 });
+            player.hello(name);
+            player.send(new AccountPacket(name, "lombax"));
 
-            StatsStore.LadderPage page = stats.getLadderPage(family, 0, 1, true, 1, 10);
+            InputBuffer loggedIn = player.receive(Packets.ACCOUNT);
 
-            Assertions.assertEquals(2, page.total());
-            Assertions.assertEquals(high.id(), page.rows().getFirst().accountId());
-            Assertions.assertEquals(20, page.rows().get(1).stats()[1]);
-            Assertions.assertEquals(new StatsStore.Position(2, 2), stats.getLadderPosition(low.id(), family, 0, 1, true));
-            Assertions.assertEquals(new StatsStore.Position(1, 2), stats.getLadderPosition(low.id(), family, 0, 1, false));
+            loggedIn.readUnsignedByte();
 
-            stats.writeCareer(high, family, new byte[] { 1, 2, 3 });
+            long id = loggedIn.readLong();
+            Peer server = connect();
 
-            Assertions.assertArrayEquals(new byte[] { 1, 2, 3 }, stats.readCareer(high.id(), family));
-            Assertions.assertNull(stats.readCareer(low.id(), family));
+            server.register("DE", 7801);
+
+            GameResult.Player winner = new GameResult.Player(id, name, 0, 7, 1, 700, true);
+
+            server.send(new HubPacket(Opcodes.Hub.RESULT, new GameResult("rac3-pal-1", "Siege", 2, 41, 600, 0, List.of(winner)).serialize()));
+
+            OutputBuffer request = new OutputBuffer();
+
+            request.writeString("rac3-pal-1");
+            request.writeLong(id);
+            player.send(new StatsPacket(Opcodes.Stats.TOTALS, request));
+
+            InputBuffer totals = player.receive(Packets.STATS);
+
+            Assertions.assertEquals(Opcodes.Stats.TOTALS, Opcodes.Stats.get(totals.readUnsignedByte()));
+            Assertions.assertEquals(id, totals.readLong());
+            Assertions.assertEquals("rac3-pal-1", totals.readString());
+            Assertions.assertEquals(new StatsStore.Totals(1, 1, 7, 1, 700), stats.getTotals(id, "rac3-pal-1"));
         }
     }
 }
