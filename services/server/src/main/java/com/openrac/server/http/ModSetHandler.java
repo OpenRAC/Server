@@ -60,7 +60,7 @@ public class ModSetHandler extends SimpleChannelInboundHandler<FullHttpRequest> 
             return;
         }
 
-        // A deadline for the whole connection: a trickle of bytes must not hold it open.
+        // One deadline per connection, so a trickle of bytes cannot hold it.
         context.executor().schedule(() -> context.close(), Constants.HTTP_TIMEOUT_SECONDS, TimeUnit.SECONDS);
     }
 

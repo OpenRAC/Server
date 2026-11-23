@@ -24,7 +24,7 @@ public class Utils {
                 continue;
             }
 
-            // If the character is uppercase, we add an underscore to the formatted string.
+            // An uppercase character starts a new word, after an underscore.
             if (Character.isUpperCase(c))
                 formatted.append('_');
 

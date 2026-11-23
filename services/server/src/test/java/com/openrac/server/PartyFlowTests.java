@@ -249,7 +249,7 @@ public class PartyFlowTests {
                 Assertions.assertEquals(i, joined.readUnsignedByte());
             }
 
-            // A full party sends the next finder to a party of its own.
+            // A full party sends the next finder to its own party.
             Client late = connect("Qwark");
 
             late.send(new PartyPacket(Opcodes.Party.FIND));
@@ -335,7 +335,7 @@ public class PartyFlowTests {
             first.assertSilent();
             Assertions.assertTrue(first.channel.isActive());
 
-            // Out of the party, its data goes nowhere and its code still works: a kick is no ban.
+            // Out of the party its data goes nowhere; kicks are no ban.
             first.send(new PartyPacket(Opcodes.Party.LEAVE));
             Assertions.assertEquals(Opcodes.Error.NOT_IN_PARTY, first.receiveError());
 
@@ -368,7 +368,7 @@ public class PartyFlowTests {
             outsider.send(new PartyPacket(Opcodes.Party.KICK, first.id));
             Assertions.assertEquals(Opcodes.Error.NOT_IN_PARTY, outsider.receiveError());
 
-            // The host itself, and an id that is no member's: left alone, in silence.
+            // The host itself, and an id no member has: silently left alone.
             host.send(new PartyPacket(Opcodes.Party.KICK, host.id));
             host.send(new PartyPacket(Opcodes.Party.KICK, outsider.id));
 
@@ -554,7 +554,7 @@ public class PartyFlowTests {
             String code = host.create();
             Client viewer = connect("Clank");
 
-            // The host is in the only party, so it has nothing to see.
+            // The host is in the only party, so it sees nothing.
             Assertions.assertEquals(0, list(host).size());
             Assertions.assertEquals(1, list(viewer).size());
 
@@ -635,13 +635,13 @@ public class PartyFlowTests {
             Assertions.assertEquals(RAC2, error.readString());
             Assertions.assertEquals(0, error.size());
 
-            // An older client knows no such reason, and is a Ratchet & Clank 1 game anyway.
+            // An older client knows no such reason, and plays Ratchet & Clank 1.
             Client older = connect("Angela");
 
             older.send(new PartyPacket(Opcodes.Party.JOIN, rac2));
             Assertions.assertEquals(Opcodes.Error.PARTY_NOT_FOUND, older.receiveError());
 
-            // A Going Commando game cannot join a Ratchet & Clank 1 party either.
+            // Going Commando cannot join a Ratchet & Clank 1 party either.
             Client going = connect("Nefarious");
 
             going.send(join(rac1, RAC2));
@@ -684,7 +684,7 @@ public class PartyFlowTests {
             Assertions.assertNotEquals(rac1, rac2);
             Assertions.assertEquals(going.id, own.readInt());
 
-            // An older finder is a Ratchet & Clank 1 game: the Ratchet & Clank 1 party.
+            // An older finder plays Ratchet & Clank 1, so it gets that party.
             Client older = connect("Clank");
 
             older.send(new PartyPacket(Opcodes.Party.FIND));

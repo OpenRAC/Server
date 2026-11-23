@@ -69,7 +69,7 @@ public class Log {
      */
 
     public static void debug(String message) {
-        // If we do not have debugging mode enabled, we should not output debug messages.
+        // Debug messages only print with debugging mode enabled.
         if (!debugging) return;
 
         // Skip if we are not logging any debug messages.

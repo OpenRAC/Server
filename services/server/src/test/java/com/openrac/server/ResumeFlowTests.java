@@ -105,7 +105,8 @@ public class ResumeFlowTests {
 
         member.channel.close();
         assertNotice(host, id, false);
-        host.assertSilent(); // No LEFT: the slot waits.
+        // No LEFT: the slot waits.
+        host.assertSilent();
 
         Client back = connect("Clank");
 
@@ -149,7 +150,7 @@ public class ResumeFlowTests {
     @Test
     @DisplayName("A slot goes after two minutes, and then nobody takes it")
     public void testExpiry() {
-        // A host of an older client is never taken for quiet, so only the slot's time counts.
+        // An older client's host is never quiet; only the slot's time counts.
         Client host = new Client();
 
         clients.add(host);
@@ -230,7 +231,7 @@ public class ResumeFlowTests {
         Assertions.assertEquals(old.id, host.receiveParty(Opcodes.Party.LEFT).readInt());
         Assertions.assertEquals(old.id, member.receiveParty(Opcodes.Party.LEFT).readInt());
 
-        // Nothing from the member for the idle time: closed, and its slot waits.
+        // A member silent for the idle time is closed; its slot waits.
         PartyController.sweep(Clock.now() + Constants.PARTY_IDLE_SECONDS * 1000L + 1000L);
         Assertions.assertFalse(member.channel.isActive());
     }
@@ -297,7 +298,7 @@ public class ResumeFlowTests {
         assertHost(party[1], party[2].id, 1);
         assertHost(party[2], party[2].id, 1);
 
-        // The other member's data reaches the new host; the new host's reaches it.
+        // The other member and the new host now reach each other.
         party[1].send(new com.openrac.net.packets.out.DataPacket(0, new byte[] {7}));
         Assertions.assertEquals(party[1].id, party[2].receive(Packets.DATA).readInt());
         party[2].send(new com.openrac.net.packets.out.DataPacket(0, new byte[] {8}));
@@ -311,7 +312,8 @@ public class ResumeFlowTests {
         long dropped = Clock.now();
 
         party[1].send(hostChanged(false, party[1].id));
-        Assertions.assertEquals(Opcodes.Error.NOT_HOST, party[1].receiveError()); // A member has no say.
+        // A member has no say.
+        Assertions.assertEquals(Opcodes.Error.NOT_HOST, party[1].receiveError());
 
         party[0].channel.close();
         assertNotice(party[1], party[0].id, false);
@@ -331,8 +333,8 @@ public class ResumeFlowTests {
         assertNotice(party[1], party[0].id, true);
         assertNotice(party[2], party[0].id, true);
 
-        // The grace it left runs out for nobody. (That far ahead it looks quiet, and is closed: a new
-        // drop, with a grace of its own.)
+        /* The grace it left runs out for nobody. (That far ahead it looks quiet, and is closed: a new
+           drop, with a grace of its own.) */
         PartyController.sweep(dropped + Constants.HOST_GRACE_SECONDS * 1000L + 1000L);
         assertNotice(party[1], party[0].id, false);
         assertNotice(party[2], party[0].id, false);

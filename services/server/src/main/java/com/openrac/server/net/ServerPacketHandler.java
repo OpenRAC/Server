@@ -207,7 +207,8 @@ public class ServerPacketHandler extends PacketHandler {
 
         String version = payload.readString();
         String name = payload.readString().strip();
-        int features = payload.size() > 0 ? payload.readUnsignedByte() : 0; // Older clients send none.
+        // Older clients send none.
+        int features = payload.size() > 0 ? payload.readUnsignedByte() : 0;
 
         // Blank or oversized fields only come from a broken client.
         if (!Utils.isValid(version, Constants.MAX_VERSION_LENGTH) || !Utils.isValid(name, Constants.MAX_NAME_LENGTH)) {
@@ -259,7 +260,8 @@ public class ServerPacketHandler extends PacketHandler {
             }
             case LIST -> {
                 String family = readFamily(ctx, payload);
-                int flags = payload.size() > 0 ? payload.readUnsignedByte() : 0; // Older clients stop at the family.
+                // Older clients stop at the family.
+                int flags = payload.size() > 0 ? payload.readUnsignedByte() : 0;
 
                 if (family != null) PartyController.list(session, orDefault(family), (flags & NetworkConstants.LIST_ADVERTS) != 0);
             }
@@ -287,7 +289,7 @@ public class ServerPacketHandler extends PacketHandler {
             case RESUME -> {
                 Session held = PartyController.resume(session, payload.readString().toUpperCase(Locale.ROOT), payload.readInt(), payload.readLong());
 
-                // A slot given up on, or a token that is not this player's.
+                // A slot given up on, or a token not this player's.
                 if (held == null) session.send(new ErrorPacket(Opcodes.Error.RESUME_REFUSED));
                 else session = held;
             }
@@ -446,7 +448,7 @@ public class ServerPacketHandler extends PacketHandler {
     private String readFamily(ChannelHandlerContext ctx, InputBuffer payload) {
         String family = payload.size() > 0 ? payload.readString() : "";
 
-        // A family is compared, never shown, so anything but short printable ASCII is a broken client.
+        // Families are only compared, so anything but short printable ASCII is broken.
         if (!family.isEmpty() && !Utils.isWord(family, Constants.MAX_FAMILY_LENGTH)) {
             reject(ctx, "sent an invalid game family");
             return null;

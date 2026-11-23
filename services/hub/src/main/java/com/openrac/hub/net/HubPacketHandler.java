@@ -196,7 +196,8 @@ public class HubPacketHandler extends PacketHandler {
         String host = payload.readString().strip();
         int port = payload.readInt();
         int players = payload.readInt();
-        String name = payload.size() > 0 ? payload.readString().strip() : ""; // Servers from before names send none.
+        // Servers from before names send none.
+        String name = payload.size() > 0 ? payload.readString().strip() : "";
 
         // Clients name regions by code, so only a listed one.
         if (region == null) {

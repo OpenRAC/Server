@@ -123,7 +123,7 @@ public final class ModSetValidator {
 
             JsonElement element = JsonParser.parseReader(reader);
 
-            // A set is always an object at its top, with nothing after it.
+            // A set is one object at its top, with nothing after it.
             if (!element.isJsonObject() || reader.peek() != JsonToken.END_DOCUMENT) throw new InvalidModSetException("not an object");
 
             return element.getAsJsonObject();
@@ -236,7 +236,7 @@ public final class ModSetValidator {
 
             JsonPrimitive value = setting.getValue().getAsJsonPrimitive();
 
-            // A long string or an address would turn the store into a paste bin.
+            // Long strings or addresses would turn the store into a paste bin.
             if (value.isString() && (value.getAsString().length() > MAX_VALUE || value.getAsString().contains("://")))
                 throw new InvalidModSetException("setting value");
         }

@@ -25,7 +25,7 @@ public class ConnectionLimit {
         open.compute(address, (key, count) -> {
             int current = count == null ? 0 : count;
 
-            // At the cap the count stays as it is, and the connection is refused.
+            // At the cap the count stays, and the connection is refused.
             if (current >= max) {
                 allowed[0] = false;
                 return current;

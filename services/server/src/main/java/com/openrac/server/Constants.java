@@ -50,8 +50,8 @@ public class Constants {
 
     public static final int MAX_LISTED_PARTIES = Environment.getInt("MAX_LISTED_PARTIES", 32); // Fits the count byte.
 
-    // The game family of a request that names none: every client from before families is a
-    // Ratchet & Clank 1 game, whose PAL and NTSC discs share one world (openrac_api.world_family).
+    /* The game family of a request that names none: every client from before families is a
+       Ratchet & Clank 1 game, whose PAL and NTSC discs share one world (openrac_api.world_family). */
     public static final String DEFAULT_FAMILY = "rac1-60-1";
 
     // Rate limits per connection: a burst, then the steady rate per second.
@@ -76,14 +76,14 @@ public class Constants {
     public static final int UDP_TIMEOUT_SECONDS = Environment.getInt("UDP_TIMEOUT_SECONDS", 15); // Quiet UDP falls back to TCP.
     public static final int HELLO_TIMEOUT_SECONDS = Environment.getInt("HELLO_TIMEOUT_SECONDS", 10); // Hello within this, or closed.
 
-    // A dropped player keeps its slot this long; a client that has not been heard from for the
-    // idle time is taken for dropped, as a machine that dies closes nothing.
+    /* A dropped player keeps its slot this long; a client that has not been heard from for the
+       idle time is taken for dropped, as a machine that dies closes nothing. */
     public static final int RESUME_SECONDS = Environment.getInt("RESUME_SECONDS", 120);
     public static final int PARTY_IDLE_SECONDS = Environment.getInt("PARTY_IDLE_SECONDS", 5);
     public static final int KEEP_ALIVE_IDLE_SECONDS = Environment.getInt("KEEP_ALIVE_IDLE_SECONDS", 30); // Covers a map load.
     public static final int HOST_GRACE_SECONDS = Environment.getInt("HOST_GRACE_SECONDS", 15); // Then the next host takes over.
 
-    // Mod sets behind short codes: a request's size, and what the store keeps.
+    // Mod sets behind short codes: request sizes, and what is kept.
     public static final int MODSET_MAX_BODY_BYTES = Environment.getInt("MODSET_MAX_BODY_BYTES", 16_384); // Compressed.
     public static final int MODSET_MAX_JSON_BYTES = Environment.getInt("MODSET_MAX_JSON_BYTES", 65_536); // Inflated.
     public static final int MODSET_MAX_MODS = 40;

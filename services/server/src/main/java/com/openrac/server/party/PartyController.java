@@ -69,13 +69,13 @@ public class PartyController {
         // Players type the code, so case does not matter.
         Party party = parties.get(code.toUpperCase(Locale.ROOT));
 
-        // A mistyped code, a party whose host already left, or one waiting to see if it has one.
+        // A mistyped code, a party whose host left, or a waiting one.
         if (party == null || party.isWaiting()) {
             session.send(new ErrorPacket(Opcodes.Error.PARTY_NOT_FOUND));
             return;
         }
 
-        // Another game's party cannot be played. A client that named no family cannot read why.
+        // Another game's party cannot be played; familyless clients cannot read why.
         if (!party.getFamily().equals(family == null ? Constants.DEFAULT_FAMILY : family)) {
             session.send(family == null ? new ErrorPacket(Opcodes.Error.PARTY_NOT_FOUND) : new ErrorPacket(Opcodes.Error.OTHER_GAME, party.getFamily()));
             return;
@@ -110,7 +110,7 @@ public class PartyController {
             // Only a party of the finder's own game can take it.
             if (!party.getFamily().equals(family)) continue;
 
-            // Finding a match must not hand the host back the player it just removed.
+            // Match finding never hands a host back the player it removed.
             if (party.hasKicked(session)) continue;
 
             add(session, party);
@@ -133,7 +133,7 @@ public class PartyController {
         int count = 0;
 
         for (Party party : parties.values()) {
-            // The list is for finding a party to join, and a full one cannot be joined.
+            // The list is for joining, and a full party cannot be joined.
             if (party.isFull() || party.isWaiting()) continue;
 
             // Another game's party could not be played.
@@ -268,7 +268,7 @@ public class PartyController {
             return;
         }
 
-        // Left a moment ago, most likely: nothing to do, and nothing worth telling the host.
+        // Likely left a moment ago: nothing to do or tell the host.
     }
 
     /**
@@ -391,19 +391,19 @@ public class PartyController {
     public static synchronized Session resume(Session fresh, String code, int id, long token) {
         Party party = parties.get(code);
 
-        // A new connection is in no party; the party may have ended since.
+        // A new connection is in no party; the party may be gone.
         if (fresh.getParty() != null || party == null) return null;
 
         Session held = null;
 
         for (Session member : party.getMembers()) if (member.getId() == id) held = member;
 
-        // Compared whole: the token is all that stands between a stranger and the slot.
+        // Compared whole: only the token keeps a stranger out of the slot.
         byte[] asked = ByteBuffer.allocate(Long.BYTES).putLong(token).array();
 
         if (held == null || !MessageDigest.isEqual(asked, ByteBuffer.allocate(Long.BYTES).putLong(held.getResumeToken()).array())) return null;
 
-        // Back before the server noticed it had gone, and the old connection is what is stale.
+        // Back before the drop was noticed, so the old connection is stale.
         Channel stale = held.rebind(fresh.getChannel());
 
         stale.close();
@@ -431,11 +431,11 @@ public class PartyController {
 
     public static synchronized void sweep(long now) {
         for (Party party : new ArrayList<>(parties.values())) {
-            // A host that stays gone keeps its slot, as a member like the others.
+            // A host that stays gone keeps its slot, like any member.
             if (party.isWaiting() && now - party.getHost().getAwayAt() >= Constants.HOST_GRACE_SECONDS * 1000L) takeOver(party);
 
             for (Session member : party.getMembers()) {
-                // Only a client that comes back keeps saying something while it stands still.
+                // Only resuming clients keep talking while they stand still.
                 if (member.resumes() && !member.isAway() && now - member.getHeardAt() >= Constants.PARTY_IDLE_SECONDS * 1000L) {
                     Log.info(describe(member) + " went quiet.");
                     member.close();
@@ -447,7 +447,7 @@ public class PartyController {
                     member.close();
                 }
 
-                // A host's slot is for the party to wait on: the wait runs out first.
+                // The party waits on a host's slot until the grace ends.
                 if (member.isAway() && !party.isHost(member) && now - member.getAwayAt() >= Constants.RESUME_SECONDS * 1000L) leave(member);
             }
 

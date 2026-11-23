@@ -47,7 +47,7 @@ public class Server {
     private Channel httpChannel; // The launcher's mod sets.
     private Hub hub; // Null unless this process runs its own hub.
 
-    // Gives up on what waited too long; never on an event loop's time.
+    // Gives up on what waited too long, off the event loops.
     private final ScheduledExecutorService sweeper = Executors.newSingleThreadScheduledExecutor(runnable -> {
         Thread thread = new Thread(runnable, "party-sweeper");
 

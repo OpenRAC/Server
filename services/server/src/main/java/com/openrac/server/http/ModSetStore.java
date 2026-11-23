@@ -77,7 +77,7 @@ public class ModSetStore {
         long now = clock.getAsLong();
         String known = codeByHash.get(hash);
 
-        // The same set keeps its code, and asking for it counts as a read.
+        // The same set keeps its code; storing it counts as a read.
         if (known != null && read(known, now) != null) return known;
 
         String code = newCode(now);
@@ -229,7 +229,7 @@ public class ModSetStore {
         while (true) {
             String code = codes.get();
 
-            // 40 random bits collide rarely, but a taken code must not be overwritten.
+            // 40 random bits rarely collide, but a taken code stays untouched.
             if (read(code, now) == null) return code;
         }
     }
