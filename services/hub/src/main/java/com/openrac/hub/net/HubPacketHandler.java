@@ -47,6 +47,7 @@ public class HubPacketHandler extends PacketHandler {
     private GameServer server; // A game server that registered, else null.
 
     private final RateLimit requestLimit = new RateLimit(Constants.REQUEST_BURST, Constants.REQUEST_PER_SECOND);
+    private final RateLimit accountLimit = new RateLimit(Constants.ACCOUNT_REQUEST_BURST, Constants.ACCOUNT_REQUEST_PER_SECOND); // Once logged in.
 
     /**
      * Admits a new connection within its address's limit and gives it a deadline to introduce itself.
@@ -107,7 +108,10 @@ public class HubPacketHandler extends PacketHandler {
         }
 
         // Servers report on a schedule, so only clients can flood.
-        if (guest && !requestLimit.take()) return;
+        if (guest && !withinLimit(ctx)) {
+            ctx.writeAndFlush(new ErrorPacket(Opcodes.Error.TRY_LATER));
+            return;
+        }
 
         switch (packet) {
             case HELLO -> handleHello(ctx, payload);
@@ -125,6 +129,18 @@ public class HubPacketHandler extends PacketHandler {
             // Lobbies, parties and game data live on the game servers.
             default -> reject(ctx, "sent " + packet + ", which the hub does not take");
         }
+    }
+
+    /**
+     * @param ctx The channel handler context.
+     * @return Whether this client's request is within its rate.
+     */
+
+    private boolean withinLimit(ChannelHandlerContext ctx) {
+        // A logged-in game asks for its ladders and career all at once.
+        if (AccountController.getAccount(ctx.channel()) != null) return accountLimit.take();
+
+        return requestLimit.take();
     }
 
     /**

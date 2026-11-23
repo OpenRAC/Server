@@ -33,8 +33,10 @@ public class Constants {
     public static final int MAX_CONNECTIONS_PER_ADDRESS = Environment.getInt("MAX_CONNECTIONS_PER_ADDRESS", 8);
 
     // Requests per connection: a burst, then the steady rate per second.
-    public static final int REQUEST_BURST = Environment.getInt("HUB_REQUEST_BURST", 10);
+    public static final int REQUEST_BURST = Environment.getInt("HUB_REQUEST_BURST", 10); // Before login: hello, list, login.
     public static final int REQUEST_PER_SECOND = Environment.getInt("HUB_REQUEST_PER_SECOND", 2);
+    public static final int ACCOUNT_REQUEST_BURST = Environment.getInt("HUB_ACCOUNT_REQUEST_BURST", 40); // The game's stats burst after login.
+    public static final int ACCOUNT_REQUEST_PER_SECOND = Environment.getInt("HUB_ACCOUNT_REQUEST_PER_SECOND", 10); // Ladder screens page quickly.
 
     // Account names and passwords, as the game's login screen takes them.
     public static final int MAX_ACCOUNT_NAME_LENGTH = 16;

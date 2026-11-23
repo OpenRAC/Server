@@ -558,6 +558,42 @@ public class HubFlowTests {
         }
     }
 
+    @Nested
+    @DisplayName("Limit Tests")
+    class LimitTests {
+
+        @Test
+        @DisplayName("A client past its rate is told to try later, not left waiting")
+        public void testTryLater() {
+            Peer guest = guest("Clank");
+
+            for (int i = 0; i < Constants.REQUEST_BURST; i++) {
+                guest.send(new RegionsPacket("rac3-pal-1"));
+                guest.receive(Packets.REGIONS);
+            }
+
+            guest.send(new RegionsPacket("rac3-pal-1"));
+
+            Assertions.assertEquals(Opcodes.Error.TRY_LATER, guest.receiveError());
+            Assertions.assertTrue(guest.channel.isOpen());
+        }
+
+        @Test
+        @DisplayName("A logged-in client gets the larger budget for the game's stats burst")
+        public void testLoggedInBudget() {
+            Peer player = guest("Ratchet");
+
+            login(player, "Ratchet", "lombax");
+
+            for (int i = 0; i < Constants.ACCOUNT_REQUEST_BURST; i++) {
+                player.send(new RegionsPacket("rac3-pal-1"));
+                player.receive(Packets.REGIONS);
+            }
+
+            player.assertSilent();
+        }
+    }
+
     /**
      * A logged-in test client.
      * @param peer Its connection.

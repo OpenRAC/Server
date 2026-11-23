@@ -101,8 +101,10 @@ connection that keeps flooding is closed. One address may hold 8 connections, an
 that has not said hello within 10 seconds is closed.
 
 The hub keeps the same per-address connection limit and hello deadline. A client gets 10 requests
-in a burst, then 2 a second (`HUB_REQUEST_BURST`, `HUB_REQUEST_PER_SECOND`); past them requests are
-dropped. Game servers are not rate limited, but a registration must come first and only once.
+in a burst, then 2 a second (`HUB_REQUEST_BURST`, `HUB_REQUEST_PER_SECOND`); once logged in, 40 in a
+burst, then 10 a second (`HUB_ACCOUNT_REQUEST_BURST`, `HUB_ACCOUNT_REQUEST_PER_SECOND`), as the game
+asks for its ladders, career and account info right after login. A request past them is answered
+with `ERROR TRY_LATER`, never dropped silently. Game servers are not rate limited, but a registration must come first and only once.
 
 UDP `STATE` has the same rate per session as `DATA`. Over it, a datagram is dropped, never struck:
 UDP never closes a session.
