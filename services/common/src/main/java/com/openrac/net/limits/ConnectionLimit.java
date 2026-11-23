@@ -1,6 +1,4 @@
-package com.openrac.server.limits;
-
-import com.openrac.server.Constants;
+package com.openrac.net.limits;
 
 import java.net.InetAddress;
 import java.util.Map;
@@ -17,17 +15,18 @@ public class ConnectionLimit {
     /**
      * Counts a new connection from the address, unless it already has the most allowed.
      * @param address The connecting address.
+     * @param max The most connections one address may hold.
      * @return Whether the connection may stay open.
      */
 
-    public static boolean open(InetAddress address) {
+    public static boolean open(InetAddress address, int max) {
         boolean[] allowed = { true };
 
         open.compute(address, (key, count) -> {
             int current = count == null ? 0 : count;
 
             // At the cap the count stays as it is, and the connection is refused.
-            if (current >= Constants.MAX_CONNECTIONS_PER_ADDRESS) {
+            if (current >= max) {
                 allowed[0] = false;
                 return current;
             }

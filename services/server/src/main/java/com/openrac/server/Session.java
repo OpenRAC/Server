@@ -4,11 +4,12 @@ import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.socket.DatagramPacket;
 
+import com.openrac.net.limits.RateLimit;
 import com.openrac.net.packets.model.OutgoingPacket;
 import com.openrac.net.packets.model.OutputBuffer;
 import com.openrac.net.packets.out.DataPacket;
-import com.openrac.server.limits.RateLimit;
 import com.openrac.server.party.Party;
+import com.openrac.utils.Clock;
 
 import java.net.InetSocketAddress;
 import java.security.SecureRandom;
@@ -33,6 +34,8 @@ public class Session {
     // Read from other members' threads, written under the party lock.
     private volatile Party party;
 
+    private volatile long accountId; // The hub's account behind the player, 0 for none.
+
     private final long token = random.nextLong(); // Proves a datagram came from this session's client.
     private final long resumeToken = random.nextLong(); // Proves a RESUME came from this session's client.
     private final RateLimit stateLimit = new RateLimit(Constants.DATA_BURST, Constants.DATA_PER_SECOND); // Datagram loop only.
@@ -41,6 +44,8 @@ public class Session {
     private volatile long udpHeard; // System.nanoTime() of the last valid datagram.
 
     private final boolean resumes; // This client comes back with RESUME.
+    private final boolean readsSlots; // This client understands SLOTS.
+    private final boolean keepsAlive; // This client sends TIME every few seconds.
     private volatile boolean away; // Its connection dropped and its slot waits for it.
     private volatile long awayAt; // Clock.now() of the drop.
     private volatile long heardAt = Clock.now(); // Clock.now() of the last packet or datagram.
@@ -52,13 +57,17 @@ public class Session {
      * @param channel The connection's channel.
      * @param name The player's display name.
      * @param resumes Whether the client said it comes back with RESUME.
+     * @param readsSlots Whether the client said it reads SLOTS.
+     * @param keepsAlive Whether the client said it sends TIME every few seconds.
      */
 
-    public Session(Channel channel, String name, boolean resumes) {
+    public Session(Channel channel, String name, boolean resumes, boolean readsSlots, boolean keepsAlive) {
         this.id = nextId.getAndIncrement();
         this.name = name;
         this.channel = channel;
         this.resumes = resumes;
+        this.readsSlots = readsSlots;
+        this.keepsAlive = keepsAlive;
     }
 
     /**
@@ -161,6 +170,22 @@ public class Session {
     }
 
     /**
+     * @return Whether the client reads SLOTS.
+     */
+
+    public boolean canReadSlots() {
+        return readsSlots;
+    }
+
+    /**
+     * @return Whether the client sends TIME every few seconds.
+     */
+
+    public boolean hasKeepAlive() {
+        return keepsAlive;
+    }
+
+    /**
      * @return Whether the connection dropped and the slot waits.
      */
 
@@ -217,6 +242,14 @@ public class Session {
     }
 
     /**
+     * @return The hub's account the player proved it holds, 0 for none.
+     */
+
+    public long getAccountId() {
+        return accountId;
+    }
+
+    /**
      * @return The secret token the client puts in each datagram.
      */
 
@@ -255,6 +288,14 @@ public class Session {
 
     public void setParty(Party party) {
         this.party = party;
+    }
+
+    /**
+     * @param accountId The account the hub vouched for.
+     */
+
+    public void setAccountId(long accountId) {
+        this.accountId = accountId;
     }
 
     /**

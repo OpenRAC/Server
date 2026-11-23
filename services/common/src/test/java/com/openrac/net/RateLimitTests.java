@@ -1,10 +1,10 @@
-package com.openrac.server;
+package com.openrac.net;
 
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import com.openrac.server.limits.RateLimit;
+import com.openrac.net.limits.RateLimit;
 
 /**
  * The token bucket behind every per-connection rate limit.

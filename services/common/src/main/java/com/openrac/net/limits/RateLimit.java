@@ -1,4 +1,4 @@
-package com.openrac.server.limits;
+package com.openrac.net.limits;
 
 /**
  * A token bucket: it allows a burst of up to its capacity, then refills at a steady rate. Each

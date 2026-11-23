@@ -14,18 +14,24 @@ import com.openrac.net.datagrams.OutgoingDatagram;
 import com.openrac.net.netty.PacketChannelInitializer;
 import com.openrac.net.packets.Opcodes;
 import com.openrac.net.packets.Packets;
+import com.openrac.net.packets.model.GameResult;
 import com.openrac.net.packets.model.InputBuffer;
 import com.openrac.net.packets.model.OutgoingPacket;
 import com.openrac.net.packets.model.OutputBuffer;
+import com.openrac.net.packets.out.AccountPacket;
 import com.openrac.net.packets.out.ChatPacket;
 import com.openrac.net.packets.out.DataPacket;
 import com.openrac.net.packets.out.ErrorPacket;
 import com.openrac.net.packets.out.HelloPacket;
+import com.openrac.net.packets.out.HubPacket;
 import com.openrac.net.packets.out.PartyPacket;
+import com.openrac.net.packets.out.RegisterPacket;
+import com.openrac.net.packets.out.ServersPacket;
 import com.openrac.net.packets.out.TimePacket;
 import com.openrac.net.packets.out.UdpPacket;
 
 import java.nio.ByteBuffer;
+import java.util.List;
 
 /**
  * Sends every packet through the real pipeline's encoders and back through its decoders.
@@ -369,6 +375,87 @@ public class PacketCodecTests {
             Assertions.assertNull(Packets.getFromByte(Packets.values().length));
             Assertions.assertNull(Opcodes.Party.get(255));
             Assertions.assertNull(Opcodes.Error.get(-1));
+            Assertions.assertNull(Opcodes.Hub.get(Opcodes.Hub.values().length));
+            Assertions.assertNull(Opcodes.Account.get(-1));
+        }
+    }
+
+    @Nested
+    @DisplayName("Hub Tests")
+    class HubTests {
+
+        @Test
+        @DisplayName("The hub's packets keep their numbers after the UI claim")
+        public void testOrdinals() {
+            Assertions.assertEquals(10, Packets.UI.ordinal());
+            Assertions.assertEquals(11, Packets.HUB.ordinal());
+            Assertions.assertEquals(12, Packets.SERVERS.ordinal());
+            Assertions.assertEquals(13, Packets.ACCOUNT.ordinal());
+            Assertions.assertEquals(14, Packets.STATS.ordinal());
+            Assertions.assertEquals(5, Opcodes.Hub.RESULT.ordinal());
+            Assertions.assertEquals(13, Opcodes.Error.NOT_LOGGED_IN.ordinal());
+            Assertions.assertEquals(7, Opcodes.Error.REGION_KEY.ordinal());
+            Assertions.assertEquals(12, Opcodes.Error.TRY_LATER.ordinal());
+        }
+
+        @Test
+        @DisplayName("A registration ends with the server's own name")
+        public void testRegister() {
+            InputBuffer payload = roundTrip(new RegisterPacket("key", "Europe", "", 7770, 3, "Box"), Packets.REGISTER);
+
+            Assertions.assertEquals("key", payload.readString());
+            Assertions.assertEquals("Europe", payload.readString());
+            Assertions.assertEquals("", payload.readString());
+            Assertions.assertEquals(7770, payload.readInt());
+            Assertions.assertEquals(3, payload.readInt());
+            Assertions.assertEquals("Box", payload.readString());
+            Assertions.assertEquals(0, payload.size());
+        }
+
+        @Test
+        @DisplayName("Status carries the players and parties after its opcode")
+        public void testStatus() {
+            InputBuffer payload = roundTrip(new HubPacket(5, 2), Packets.HUB);
+
+            Assertions.assertEquals(Opcodes.Hub.STATUS, Opcodes.Hub.get(payload.readUnsignedByte()));
+            Assertions.assertEquals(5, payload.readInt());
+            Assertions.assertEquals(2, payload.readInt());
+            Assertions.assertEquals(0, payload.size());
+        }
+
+        @Test
+        @DisplayName("Removed carries the server's id")
+        public void testRemoved() {
+            InputBuffer payload = roundTrip(new ServersPacket(9), Packets.SERVERS);
+
+            Assertions.assertEquals(Opcodes.Servers.REMOVED, Opcodes.Servers.get(payload.readUnsignedByte()));
+            Assertions.assertEquals(9, payload.readInt());
+        }
+
+        @Test
+        @DisplayName("Logged in carries the account, its token and whether it is new")
+        public void testLoggedIn() {
+            InputBuffer payload = roundTrip(new AccountPacket(7L, "Ratchet", "abc", true), Packets.ACCOUNT);
+
+            Assertions.assertEquals(Opcodes.Account.LOGGED_IN, Opcodes.Account.get(payload.readUnsignedByte()));
+            Assertions.assertEquals(7L, payload.readLong());
+            Assertions.assertEquals("Ratchet", payload.readString());
+            Assertions.assertEquals("abc", payload.readString());
+            Assertions.assertEquals(1, payload.readUnsignedByte());
+        }
+
+        @Test
+        @DisplayName("A game result survives the round trip, players included")
+        public void testResult() {
+            GameResult.Player ratchet = new GameResult.Player(7L, "Ratchet", 0, 12, 3, 1200, true);
+            GameResult.Player guest = new GameResult.Player(0L, "Guest", 1, 3, 12, 300, false);
+            GameResult result = new GameResult("rac3-pal-1", "Siege", 2, 41, 600, 0, List.of(ratchet, guest));
+
+            InputBuffer payload = roundTrip(new HubPacket(Opcodes.Hub.RESULT, result.serialize()), Packets.HUB);
+
+            Assertions.assertEquals(Opcodes.Hub.RESULT, Opcodes.Hub.get(payload.readUnsignedByte()));
+            Assertions.assertEquals(result, GameResult.read(payload, 8));
+            Assertions.assertEquals(0, payload.size());
         }
     }
 }

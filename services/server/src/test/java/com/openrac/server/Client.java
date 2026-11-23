@@ -1,15 +1,13 @@
 package com.openrac.server;
 
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
-import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.jupiter.api.Assertions;
 
+import com.openrac.net.EmbeddedPeer;
 import com.openrac.net.NetworkConstants;
+import com.openrac.net.netty.PacketChannelInitializer;
 import com.openrac.net.packets.Opcodes;
 import com.openrac.net.packets.Packets;
 import com.openrac.net.packets.model.InputBuffer;
-import com.openrac.net.packets.model.OutgoingPacket;
 import com.openrac.net.packets.out.HelloPacket;
 import com.openrac.net.packets.out.PartyPacket;
 import com.openrac.server.net.ServerChannelInitializer;
@@ -17,12 +15,10 @@ import com.openrac.server.net.ServerChannelInitializer;
 import java.util.Locale;
 
 /**
- * One player's TCP connection to the server's pipeline, run on an embedded channel.
+ * One TCP connection to the server's pipeline, or another one, run on an embedded channel.
  */
 
-class Client {
-    final EmbeddedChannel channel = new EmbeddedChannel();
-
+class Client extends EmbeddedPeer {
     int id;
     long token; // The UDP token the server sent after hello.
     int features; // The bits of what the server said it takes.
@@ -33,7 +29,16 @@ class Client {
      */
 
     Client() {
-        new ServerChannelInitializer().initPipeline(channel.pipeline());
+        this(new ServerChannelInitializer());
+    }
+
+    /**
+     * Builds another pipeline on the embedded channel, such as the hub's or a hub link's.
+     * @param initializer The pipeline to build.
+     */
+
+    Client(PacketChannelInitializer initializer) {
+        super(initializer);
     }
 
     /**
@@ -105,49 +110,6 @@ class Client {
     }
 
     /**
-     * Frames a packet the way a game client would and feeds it to the server.
-     * @param packet The packet to send.
-     */
-
-    void send(OutgoingPacket packet) {
-        ByteBuf frame = Unpooled.buffer();
-
-        frame.writeInt(packet.size());
-        packet.writeTo(frame);
-
-        channel.writeInbound(frame);
-    }
-
-    /**
-     * Reads the next packet the server sent and checks its id.
-     * @param expected The packet expected next.
-     * @return The payload after the id.
-     */
-
-    InputBuffer receive(Packets expected) {
-        // The prepender sends the length and the packet as two buffers.
-        ByteBuf length = channel.readOutbound();
-
-        Assertions.assertNotNull(length, "Expected " + expected + " but nothing was sent.");
-
-        ByteBuf body = channel.readOutbound();
-        byte[] bytes = new byte[length.readInt()];
-
-        body.readBytes(bytes);
-
-        Assertions.assertEquals(0, body.readableBytes());
-
-        length.release();
-        body.release();
-
-        InputBuffer payload = new InputBuffer(bytes);
-
-        Assertions.assertEquals(expected, Packets.getFromByte(payload.readUnsignedByte()));
-
-        return payload;
-    }
-
-    /**
      * Reads the next packet, expecting a party notice with the opcode.
      * @param expected The party opcode expected next.
      * @return The payload after the opcode.
@@ -159,21 +121,5 @@ class Client {
         Assertions.assertEquals(expected, Opcodes.Party.get(payload.readUnsignedByte()));
 
         return payload;
-    }
-
-    /**
-     * @return The reason of the next packet, which must be an error.
-     */
-
-    Opcodes.Error receiveError() {
-        return Opcodes.Error.get(receive(Packets.ERROR).readUnsignedByte());
-    }
-
-    /**
-     * Checks the server sent this client nothing more.
-     */
-
-    void assertSilent() {
-        Assertions.assertNull(channel.readOutbound());
     }
 }

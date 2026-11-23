@@ -10,11 +10,16 @@ import com.openrac.net.NetworkConstants;
 import com.openrac.net.packets.Opcodes;
 import com.openrac.net.packets.Packets;
 import com.openrac.net.packets.model.InputBuffer;
+import com.openrac.net.packets.out.HelloPacket;
 import com.openrac.net.packets.out.PartyPacket;
 import com.openrac.net.packets.out.RelayPacket;
+import com.openrac.server.party.PartyController;
+import com.openrac.utils.Clock;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Runs the pieces games with lobby rooms use on the real pipeline: relayed data between any
@@ -95,6 +100,88 @@ public class RoomFlowTests {
         return packet;
     }
 
+    /**
+     * Connects a player that says hello with client bits.
+     * @param name The display name.
+     * @param bits The HELLO client bits.
+     * @return The greeted client.
+     */
+
+    private Client connectWith(String name, int bits) {
+        Client client = new Client();
+
+        clients.add(client);
+        client.send(new HelloPacket("0.1.0", name, bits));
+        client.readGreeting();
+
+        return client;
+    }
+
+    /**
+     * Connects a player that reads SLOTS and says hello.
+     * @param name The display name.
+     * @return The greeted client.
+     */
+
+    private Client connectSlotted(String name) {
+        return connectWith(name, NetworkConstants.CLIENT_SLOTS);
+    }
+
+    /**
+     * Connects a player that promises TIME every few seconds and says hello.
+     * @param name The display name.
+     * @return The greeted client.
+     */
+
+    private Client connectKeepingAlive(String name) {
+        return connectWith(name, NetworkConstants.CLIENT_KEEPS_ALIVE);
+    }
+
+    /**
+     * Reads a SLOTS notice.
+     * @param client The client it was sent to.
+     * @return Each member's slot by session id.
+     */
+
+    private static Map<Integer, Integer> readSlots(Client client) {
+        InputBuffer payload = client.receiveParty(Opcodes.Party.SLOTS);
+        Map<Integer, Integer> slots = new HashMap<>();
+        int count = payload.readUnsignedByte();
+
+        for (int i = 0; i < count; i++) slots.put(payload.readInt(), payload.readUnsignedByte());
+
+        return slots;
+    }
+
+    /**
+     * Builds a create request for a game family.
+     * @param family The family.
+     * @return The request.
+     */
+
+    private static PartyPacket createRequest(String family) {
+        PartyPacket packet = new PartyPacket(Opcodes.Party.CREATE, "Room");
+
+        packet.writeString(family);
+
+        return packet;
+    }
+
+    /**
+     * Builds a join request for a game family.
+     * @param code The join code.
+     * @param family The family.
+     * @return The request.
+     */
+
+    private static PartyPacket joinRequest(String code, String family) {
+        PartyPacket packet = new PartyPacket(Opcodes.Party.JOIN, code);
+
+        packet.writeString(family);
+
+        return packet;
+    }
+
     @Nested
     @DisplayName("Wire Tests")
     class WireTests {
@@ -113,6 +200,9 @@ public class RoomFlowTests {
         public void testOrdinals() {
             Assertions.assertEquals(7, Packets.RELAY.ordinal());
             Assertions.assertEquals(13, Opcodes.Party.ADVERT.ordinal());
+            Assertions.assertEquals(8, Packets.REGIONS.ordinal());
+            Assertions.assertEquals(9, Packets.REGISTER.ordinal());
+            Assertions.assertEquals(14, Opcodes.Party.SLOTS.ordinal());
         }
     }
 
@@ -249,6 +339,147 @@ public class RoomFlowTests {
             host.send(advertRequest(new byte[Constants.MAX_ADVERT_LENGTH + 1]));
 
             Assertions.assertFalse(host.channel.isActive());
+        }
+    }
+
+    @Nested
+    @DisplayName("Slot Tests")
+    class SlotTests {
+
+        @Test
+        @DisplayName("Members keep their slots, and a newcomer takes the lowest free one")
+        public void testSlots() {
+            Client host = connectSlotted("Ratchet");
+            Client first = connectSlotted("Clank");
+            Client second = connectSlotted("Qwark");
+
+            host.send(createRequest("rac3-pal-1"));
+
+            String code = host.receiveParty(Opcodes.Party.INFO).readString();
+
+            Assertions.assertEquals(Map.of(host.id, 0), readSlots(host));
+
+            for (Client joiner : List.of(first, second)) {
+                joiner.send(joinRequest(code, "rac3-pal-1"));
+            }
+
+            Assertions.assertEquals(1, readSlotsAfterJoin(first).get(first.id));
+            Assertions.assertEquals(2, readSlotsAfterJoin(second).get(second.id));
+
+            first.send(new PartyPacket(Opcodes.Party.LEAVE));
+
+            Client third = connectSlotted("Skrunch");
+            third.send(joinRequest(code, "rac3-pal-1"));
+
+            Map<Integer, Integer> slots = readSlotsAfterJoin(third);
+
+            Assertions.assertEquals(1, slots.get(third.id));
+            Assertions.assertEquals(2, slots.get(second.id));
+        }
+
+        @Test
+        @DisplayName("A family's own party size is what its listings say")
+        public void testFamilySize() {
+            Client host = connect("Ratchet");
+            Client viewer = connect("Clank");
+
+            host.send(createRequest("rac3-pal-1"));
+            host.receiveParty(Opcodes.Party.INFO);
+
+            PartyPacket list = new PartyPacket(Opcodes.Party.LIST, "rac3-pal-1");
+
+            viewer.send(list);
+
+            InputBuffer payload = viewer.receiveParty(Opcodes.Party.LIST);
+
+            Assertions.assertEquals(1, payload.readUnsignedByte());
+            payload.readString();
+            payload.readString();
+            payload.readUnsignedByte();
+            Assertions.assertEquals(8, payload.readUnsignedByte());
+        }
+
+        /**
+         * Skips a joiner's INFO and reads the SLOTS that follows it.
+         * @param joiner The client that joined.
+         * @return Each member's slot by session id.
+         */
+
+        private Map<Integer, Integer> readSlotsAfterJoin(Client joiner) {
+            joiner.receiveParty(Opcodes.Party.INFO);
+
+            return readSlots(joiner);
+        }
+    }
+
+    @Nested
+    @DisplayName("Keep Alive Tests")
+    class KeepAliveTests {
+
+        /**
+         * @return The sweep time just past the keep-alive idle limit.
+         */
+
+        private long pastIdleLimit() {
+            return Clock.now() + Constants.KEEP_ALIVE_IDLE_SECONDS * 1000L + 1000L;
+        }
+
+        @Test
+        @DisplayName("A keep-alive member gone quiet is dropped and the others hear it left")
+        public void testQuietMember() {
+            Client host = connect("Ratchet");
+            Client member = connectKeepingAlive("Clank");
+
+            party(host, member);
+            PartyController.sweep(pastIdleLimit());
+
+            Assertions.assertFalse(member.channel.isActive());
+            Assertions.assertEquals(member.id, host.receiveParty(Opcodes.Party.LEFT).readInt());
+        }
+
+        @Test
+        @DisplayName("A keep-alive host gone quiet leaves as a host does, ending a party nobody takes over")
+        public void testQuietHost() {
+            Client host = connectKeepingAlive("Ratchet");
+            Client member = connect("Clank");
+
+            party(host, member);
+            PartyController.sweep(pastIdleLimit());
+
+            Assertions.assertFalse(host.channel.isActive());
+            member.receiveParty(Opcodes.Party.END);
+        }
+
+        @Test
+        @DisplayName("A keep-alive member heard within the limit stays")
+        public void testHeardMember() {
+            Client host = connect("Ratchet");
+            Client member = connectKeepingAlive("Clank");
+
+            party(host, member);
+            PartyController.sweep(Clock.now() + Constants.KEEP_ALIVE_IDLE_SECONDS * 1000L - 2000L);
+
+            Assertions.assertTrue(member.channel.isActive());
+            host.assertSilent();
+        }
+
+        @Test
+        @DisplayName("A member that never promised TIME is never dropped for silence")
+        public void testNoPromise() {
+            Client host = connect("Ratchet");
+            Client member = connect("Clank");
+
+            party(host, member);
+            PartyController.sweep(pastIdleLimit());
+
+            Assertions.assertTrue(member.channel.isActive());
+            host.assertSilent();
+        }
+
+        @Test
+        @DisplayName("The keep-alive bit keeps its value")
+        public void testBit() {
+            Assertions.assertEquals(4, NetworkConstants.CLIENT_KEEPS_ALIVE);
         }
     }
 }

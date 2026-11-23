@@ -11,13 +11,17 @@ import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.util.concurrent.Future;
 
+import com.openrac.hub.Hub;
 import com.openrac.server.http.HttpChannelInitializer;
 import com.openrac.server.http.ModSetStore;
+import com.openrac.server.hub.HubController;
+import com.openrac.server.hub.Mode;
 import com.openrac.server.net.ServerChannelInitializer;
 import com.openrac.server.net.ServerDatagramHandler;
 import com.openrac.server.party.PartyController;
 import com.openrac.server.ui.UiController;
 import com.openrac.system.Environment;
+import com.openrac.utils.Clock;
 import com.openrac.utils.logger.Log;
 
 import java.io.IOException;
@@ -29,7 +33,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * The entry point. It binds the TCP and UDP port, accepts game connections on Netty's event loops
  * and shuts them down cleanly when the process is stopped. A second TCP port takes HTTP requests
- * for the launcher's mod sets.
+ * for the launcher's mod sets. In "all" mode it also runs the hub, on its own port.
  */
 
 public class Server {
@@ -40,6 +44,7 @@ public class Server {
     private Channel channel;
     private Channel udpChannel; // The one datagram socket every session shares.
     private Channel httpChannel; // The launcher's mod sets.
+    private Hub hub; // Null unless this process runs its own hub.
 
     // Gives up on what waited too long; never on an event loop's time.
     private final ScheduledExecutorService sweeper = Executors.newSingleThreadScheduledExecutor(runnable -> {
@@ -95,6 +100,12 @@ public class Server {
     public void start(String host, int port) throws InterruptedException {
         Log.info("Initializing " + Constants.NAME + " " + Constants.VERSION + " (Java " + Runtime.version().feature() + ", log level " + Log.getLevel() + ")...");
 
+        // One process may run the hub its region registers with, started first.
+        if (Constants.MODE == Mode.ALL) {
+            hub = new Hub();
+            hub.start(host, com.openrac.hub.Constants.PORT);
+        }
+
         // Game traffic is small and frequent, so never wait to batch it.
         channel = new ServerBootstrap()
                 .group(bossGroup, workerGroup)
@@ -116,7 +127,9 @@ public class Server {
 
         sweeper.scheduleWithFixedDelay(() -> PartyController.sweep(Clock.now()), 1, 1, TimeUnit.SECONDS);
 
-        Log.notice(Constants.NAME + " is listening on " + host + ":" + port + " (TCP and UDP).");
+        HubController.start(workerGroup, HubController.getAddress(Constants.MODE));
+
+        Log.notice(Constants.NAME + " is listening on " + host + ":" + port + " (TCP and UDP), as " + Constants.MODE.getName() + ".");
     }
 
     /**
@@ -166,6 +179,9 @@ public class Server {
     public void stop() {
         Log.info("Shutting down " + Constants.NAME + "...");
 
+        // Players stop being sent here before the ports close.
+        HubController.stop();
+
         // A failed bind leaves no channel to close.
         if (channel != null) channel.close().syncUninterruptibly();
         if (udpChannel != null) udpChannel.close().syncUninterruptibly();
@@ -185,6 +201,9 @@ public class Server {
 
         boss.syncUninterruptibly();
         workers.syncUninterruptibly();
+
+        // Only "all" mode runs a hub of its own.
+        if (hub != null) hub.stop();
 
         Log.notice(Constants.NAME + " stopped.");
     }
