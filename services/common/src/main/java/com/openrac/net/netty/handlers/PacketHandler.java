@@ -63,7 +63,7 @@ public abstract class PacketHandler extends SimpleChannelInboundHandler<ByteBuff
      * @param reason What the peer did wrong.
      */
 
-    protected void reject(ChannelHandlerContext ctx, String reason) {
+    public static void reject(ChannelHandlerContext ctx, String reason) {
         Log.warning(ctx.channel().remoteAddress() + " " + reason + ", closing.");
 
         ctx.close();
