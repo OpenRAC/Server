@@ -1,54 +1,40 @@
 package com.openrac.hub.net;
 
-import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 
 import com.openrac.hub.Constants;
-import com.openrac.hub.accounts.Account;
-import com.openrac.hub.accounts.AccountController;
-import com.openrac.hub.servers.GameServer;
+import com.openrac.hub.net.packets.PacketRouter;
+import com.openrac.hub.net.packets.model.IncomingPacket;
 import com.openrac.hub.servers.ServerController;
-import com.openrac.hub.stats.StatsController;
-import com.openrac.net.NetworkConstants;
 import com.openrac.net.limits.ConnectionLimit;
 import com.openrac.net.limits.RateLimit;
 import com.openrac.net.netty.handlers.PacketHandler;
 import com.openrac.net.packets.Opcodes;
 import com.openrac.net.packets.Packets;
-import com.openrac.net.packets.Regions;
-import com.openrac.net.packets.model.GameResult;
 import com.openrac.net.packets.model.InputBuffer;
 import com.openrac.net.packets.out.ErrorPacket;
-import com.openrac.net.packets.out.HelloPacket;
-import com.openrac.net.packets.out.HubPacket;
-import com.openrac.net.packets.out.TimePacket;
-import com.openrac.net.packets.out.UdpPacket;
-import com.openrac.utils.Clock;
-import com.openrac.utils.Utils;
-import com.openrac.utils.logger.Log;
 
-import java.net.Inet6Address;
-import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Handles one connection to the hub. A player's client says HELLO and may then log in, list the
- * game servers and watch them change; a game server sends REGISTER instead and then its heartbeat.
- * Each connection gets its own instance, so its fields are only touched on its event loop.
+ * Handles one connection to the hub: it admits it, finds the class that takes each packet in the
+ * {@link PacketRouter}, enforces what that packet requires, and cleans up when the connection
+ * closes. Each connection gets its own instance, so its state is only touched on its event loop.
  */
 
 public class HubPacketHandler extends PacketHandler {
-    private static final AtomicInteger nextGuestId = new AtomicInteger(1);
+    private Connection connection;
 
-    private InetAddress address; // Set while the connection counts against its address.
+    /**
+     * Wraps the connection as soon as the handler joins its pipeline, which can be after it is active.
+     * @param ctx The channel handler context.
+     */
 
-    private boolean guest; // A client that said hello.
-    private GameServer server; // A game server that registered, else null.
-
-    private final RateLimit requestLimit = new RateLimit(Constants.REQUEST_BURST, Constants.REQUEST_PER_SECOND);
-    private final RateLimit accountLimit = new RateLimit(Constants.ACCOUNT_REQUEST_BURST, Constants.ACCOUNT_REQUEST_PER_SECOND); // Once logged in.
+    @Override
+    public void handlerAdded(ChannelHandlerContext ctx) {
+        connection = new Connection(ctx);
+    }
 
     /**
      * Admits a new connection within its address's limit and gives it a deadline to introduce itself.
@@ -65,13 +51,13 @@ public class HubPacketHandler extends PacketHandler {
                 return;
             }
 
-            address = remote.getAddress();
+            connection.setAddress(remote.getAddress());
         }
 
         // A connection that never introduces itself would hold a socket for nothing.
         ctx.executor().schedule(() -> {
             // Still a stranger and still open when the deadline comes.
-            if (!isKnown() && ctx.channel().isActive()) reject(ctx, "did not say hello or register in time");
+            if (!connection.isKnown() && ctx.channel().isActive()) reject(ctx, "did not say hello or register in time");
         }, Constants.HELLO_TIMEOUT_SECONDS, TimeUnit.SECONDS);
 
         ctx.fireChannelActive();
@@ -85,16 +71,16 @@ public class HubPacketHandler extends PacketHandler {
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
         // A refused connection never counted against its address.
-        if (address != null) ConnectionLimit.close(address);
+        if (connection.getAddress() != null) ConnectionLimit.close(connection.getAddress());
 
         // A client's watch ends with its channel, so only servers leave.
-        if (server != null) ServerController.remove(server);
+        if (connection.getServer() != null) ServerController.remove(connection.getServer());
 
         ctx.fireChannelInactive();
     }
 
     /**
-     * Routes one packet.
+     * Looks up the packet, checks what it requires and hands it its payload.
      * @param ctx The channel handler context.
      * @param packet The packet id as an enum.
      * @param payload The rest of the packet.
@@ -102,398 +88,28 @@ public class HubPacketHandler extends PacketHandler {
 
     @Override
     protected void route(ChannelHandlerContext ctx, Packets packet, InputBuffer payload) {
+        IncomingPacket incoming = PacketRouter.get(packet);
+
         // A connection says what it is before anything else.
-        if (!isKnown() && packet != Packets.HELLO && packet != Packets.REGISTER) {
+        if (!connection.isKnown() && (incoming == null || incoming.isStrict())) {
             reject(ctx, "sent " + packet + " before hello or register");
             return;
         }
 
-        // Servers report on a schedule, so only clients can flood.
-        if (guest && !withinLimit(ctx)) {
+        // Lobbies, parties and game data live on the game servers.
+        if (incoming == null) {
+            reject(ctx, "sent " + packet + ", which the hub does not take");
+            return;
+        }
+
+        RateLimit limit = incoming.getRateLimit(connection);
+
+        // Over its rate, a request is refused for now.
+        if (limit != null && !limit.take()) {
             ctx.writeAndFlush(new ErrorPacket(Opcodes.Error.TRY_LATER));
             return;
         }
 
-        switch (packet) {
-            case HELLO -> handleHello(ctx, payload);
-            case REGISTER -> handleRegister(ctx, payload);
-            case HUB -> handleHub(ctx, payload);
-            case REGIONS -> {
-                // A server asking for the list is closed by the check.
-                if (isGuest(ctx, packet)) ctx.writeAndFlush(ServerController.getRegionsPacket());
-            }
-            case SERVERS -> handleServers(ctx, payload);
-            case ACCOUNT -> handleAccount(ctx, payload);
-            case STATS -> handleStats(ctx, payload);
-            case TIME -> ctx.writeAndFlush(new TimePacket(payload.readLong(), Clock.now()));
-
-            // Lobbies, parties and game data live on the game servers.
-            default -> reject(ctx, "sent " + packet + ", which the hub does not take");
-        }
-    }
-
-    /**
-     * @param ctx The channel handler context.
-     * @return Whether this client's request is within its rate.
-     */
-
-    private boolean withinLimit(ChannelHandlerContext ctx) {
-        // A logged-in game asks for its ladders and career all at once.
-        if (AccountController.getAccount(ctx.channel()) != null) return accountLimit.take();
-
-        return requestLimit.take();
-    }
-
-    /**
-     * Greets a player's client: an id, and the bits of what the hub takes.
-     * @param ctx The channel handler context.
-     * @param payload The hello packet's payload.
-     */
-
-    private void handleHello(ChannelHandlerContext ctx, InputBuffer payload) {
-        // One introduction per connection.
-        if (isKnown()) {
-            reject(ctx, "sent a second hello");
-            return;
-        }
-
-        String version = payload.readString();
-        String name = payload.readString().strip();
-
-        // Blank or oversized fields only come from a broken client.
-        if (!Utils.isValid(version, Constants.MAX_VERSION_LENGTH) || !Utils.isValid(name, Constants.MAX_NAME_LENGTH)) {
-            reject(ctx, "sent an invalid hello");
-            return;
-        }
-
-        guest = true;
-
-        int id = nextGuestId.getAndIncrement();
-
-        Log.info("Guest " + id + " (" + name + ", version " + version + ") from " + ctx.channel().remoteAddress() + ".");
-
-        ctx.write(new HelloPacket(id));
-
-        // The hub takes no datagrams, so token and port are 0.
-        ctx.writeAndFlush(new UdpPacket(0, 0, NetworkConstants.FEATURE_REGIONS | NetworkConstants.FEATURE_SERVERS, 0));
-    }
-
-    /**
-     * Lists a game server that registers.
-     * @param ctx The channel handler context.
-     * @param payload The register packet's payload.
-     */
-
-    private void handleRegister(ChannelHandlerContext ctx, InputBuffer payload) {
-        // One introduction per connection.
-        if (isKnown()) {
-            reject(ctx, "sent a second registration");
-            return;
-        }
-
-        String key = payload.readString();
-        Regions region = Regions.get(payload.readString());
-        String host = payload.readString().strip();
-        int port = payload.readInt();
-        int players = payload.readInt();
-        // Servers from before names send none.
-        String name = payload.size() > 0 ? payload.readString().strip() : "";
-
-        // Clients name regions by code, so only a listed one.
-        if (region == null) {
-            reject(ctx, "sent an unknown region code");
-            return;
-        }
-
-        // Games must draw the name, and players need a real port.
-        if (!Utils.isPrintable(name, NetworkConstants.MAX_SERVER_NAME_LENGTH) || port < 1 || port > 65_535) {
-            reject(ctx, "sent an invalid registration");
-            return;
-        }
-
-        // A keyed hub lists only its operators' servers.
-        if (!Constants.REGION_KEY.isEmpty() && !Constants.REGION_KEY.equals(key)) {
-            refuse(ctx, Opcodes.Error.REGION_KEY);
-            return;
-        }
-
-        // A server on the hub's own network leaves players the hub's address.
-        if (host.isEmpty() && ctx.channel().remoteAddress() instanceof InetSocketAddress remote && !isPrivate(remote.getAddress()))
-            host = remote.getAddress().getHostAddress();
-
-        server = ServerController.add(ctx.channel(), region.name(), name, host, port, players, Clock.now());
-
-        // The list has a bound, and the server tries again later.
-        if (server == null) {
-            refuse(ctx, Opcodes.Error.HUB_FULL);
-            return;
-        }
-
-        ctx.writeAndFlush(new HubPacket(server.getId()));
-    }
-
-    /**
-     * Runs a registered server's heartbeat, its leaving and its session checks.
-     * @param ctx The channel handler context.
-     * @param payload The hub packet's payload.
-     */
-
-    private void handleHub(ChannelHandlerContext ctx, InputBuffer payload) {
-        // Only a registered server speaks on the hub link.
-        if (server == null) {
-            reject(ctx, "sent HUB without registering");
-            return;
-        }
-
-        switch (Opcodes.Hub.get(payload.readUnsignedByte())) {
-            case STATUS -> ServerController.status(server, payload.readInt(), payload.readInt(), Clock.now());
-            case CLOSING -> ServerController.remove(server);
-            case VERIFY -> {
-                int request = payload.readInt();
-                String token = readToken(ctx, payload);
-
-                // An invalid token already closed the connection.
-                if (token != null) AccountController.verify(ctx.channel(), request, token);
-            }
-
-            case RESULT -> handleResult(ctx, payload);
-
-            // The rest only the hub sends.
-            case null, default -> reject(ctx, "sent an invalid hub opcode");
-        }
-    }
-
-    /**
-     * Starts a client's watch on the server list.
-     * @param ctx The channel handler context.
-     * @param payload The servers packet's payload.
-     */
-
-    private void handleServers(ChannelHandlerContext ctx, InputBuffer payload) {
-        // Servers have no use for the list.
-        if (!isGuest(ctx, Packets.SERVERS)) return;
-
-        // Only WATCH comes from a client. The family waits for filters.
-        if (Opcodes.Servers.get(payload.readUnsignedByte()) != Opcodes.Servers.WATCH) {
-            reject(ctx, "sent an invalid servers opcode");
-            return;
-        }
-
-        ServerController.watch(ctx.channel());
-    }
-
-    /**
-     * Logs a client in to its account, or out of it.
-     * @param ctx The channel handler context.
-     * @param payload The account packet's payload.
-     */
-
-    private void handleAccount(ChannelHandlerContext ctx, InputBuffer payload) {
-        // Servers check tokens through VERIFY, never log in.
-        if (!isGuest(ctx, Packets.ACCOUNT)) return;
-
-        switch (Opcodes.Account.get(payload.readUnsignedByte())) {
-            case LOGIN -> AccountController.login(ctx.channel(), address, payload.readString(), payload.readString());
-            case LOGOUT -> {
-                String token = readToken(ctx, payload);
-
-                // An invalid token already closed the connection.
-                if (token != null) AccountController.logout(ctx.channel(), token);
-            }
-
-            // TOKEN belongs to game servers, LOGGED_IN to the hub.
-            case null, default -> reject(ctx, "sent an invalid account opcode");
-        }
-    }
-
-    /**
-     * Stores a game a server reports as finished.
-     * @param ctx The channel handler context.
-     * @param payload The HUB RESULT payload after its opcode.
-     */
-
-    private void handleResult(ChannelHandlerContext ctx, InputBuffer payload) {
-        GameResult result = GameResult.read(payload, Constants.MAX_RESULT_PLAYERS);
-
-        // An oversized scoreboard or bad family means a broken server.
-        if (result == null || !Utils.isWord(result.family(), Constants.MAX_FAMILY_LENGTH) || result.name().length() > Constants.MAX_NAME_LENGTH) {
-            reject(ctx, "sent an invalid game result");
-            return;
-        }
-
-        StatsController.record(server, ctx.channel(), result);
-    }
-
-    /**
-     * Answers a client's stats and ladder requests, and stores its own ladder and career values.
-     * @param ctx The channel handler context.
-     * @param payload The stats packet's payload.
-     */
-
-    private void handleStats(ChannelHandlerContext ctx, InputBuffer payload) {
-        // Servers report games through HUB RESULT instead.
-        if (!isGuest(ctx, Packets.STATS)) return;
-
-        Opcodes.Stats opcode = Opcodes.Stats.get(payload.readUnsignedByte());
-        String family = payload.readString();
-
-        // A family is compared, never shown, so anything else is broken.
-        if (opcode == null || !Utils.isWord(family, Constants.MAX_FAMILY_LENGTH)) {
-            reject(ctx, "sent an invalid stats request");
-            return;
-        }
-
-        switch (opcode) {
-            case TOTALS -> StatsController.totals(ctx.channel(), family, payload.readLong());
-            case LADDER_READ -> StatsController.readLadder(ctx.channel(), family, payload.readLong(), payload.readInt());
-            case CAREER_READ -> StatsController.readCareer(ctx.channel(), family, payload.readLong());
-            case LADDER_PAGE -> {
-                int type = payload.readInt();
-                int index = readStatIndex(ctx, payload);
-                boolean descending = payload.readUnsignedByte() != 0;
-                int start = Math.max(1, payload.readInt());
-                int count = Math.min(Constants.MAX_LADDER_PAGE, payload.readUnsignedByte());
-
-                // A bad index already closed the connection.
-                if (index >= 0) StatsController.page(ctx.channel(), family, type, index, descending, start, count);
-            }
-            case LADDER_POSITION -> {
-                long accountId = payload.readLong();
-                int type = payload.readInt();
-                int index = readStatIndex(ctx, payload);
-                boolean descending = payload.readUnsignedByte() != 0;
-
-                // A bad index already closed the connection.
-                if (index >= 0) StatsController.position(ctx.channel(), family, accountId, type, index, descending);
-            }
-            case LADDER_WRITE -> {
-                Account account = getAccount(ctx);
-                int type = payload.readInt();
-                int count = payload.readUnsignedByte();
-
-                // A row past the game's format only comes from a broken client.
-                if (count > Constants.MAX_LADDER_STATS) {
-                    reject(ctx, "sent too many ladder values");
-                    return;
-                }
-
-                int[] stats = new int[count];
-
-                for (int i = 0; i < count; i++) stats[i] = payload.readInt();
-
-                // Not logged in: already told NOT_LOGGED_IN.
-                if (account != null) StatsController.writeLadder(ctx.channel(), account, family, type, stats);
-            }
-            case CAREER_WRITE -> {
-                Account account = getAccount(ctx);
-                byte[] stats = payload.readRemainingBytes();
-
-                // Career bytes past the game's format only come from a broken client.
-                if (stats.length > Constants.MAX_CAREER_BYTES) {
-                    reject(ctx, "sent too many career bytes");
-                    return;
-                }
-
-                // Not logged in: already told NOT_LOGGED_IN.
-                if (account != null) StatsController.writeCareer(ctx.channel(), account, family, stats);
-            }
-        }
-    }
-
-    /**
-     * Reads which ladder value to sort by, closing a connection that names one past the row.
-     * @param ctx The channel handler context.
-     * @param payload The rest of the request.
-     * @return The index, or -1 when it was invalid and the connection is closed.
-     */
-
-    private int readStatIndex(ChannelHandlerContext ctx, InputBuffer payload) {
-        int index = payload.readUnsignedByte();
-
-        // A ladder row holds only so many values.
-        if (index >= Constants.MAX_LADDER_STATS) {
-            reject(ctx, "sent an invalid ladder value index");
-            return -1;
-        }
-
-        return index;
-    }
-
-    /**
-     * Reads a session token, closing a connection that sends one the hub never gave out.
-     * @param ctx The channel handler context.
-     * @param payload The rest of the packet.
-     * @return The token, or null when it was invalid and the connection is closed.
-     */
-
-    private String readToken(ChannelHandlerContext ctx, InputBuffer payload) {
-        String token = payload.readString();
-
-        // A blank or oversized token is no token the hub gave out.
-        if (!Utils.isValid(token, Constants.MAX_TOKEN_LENGTH)) {
-            reject(ctx, "sent an invalid token");
-            return null;
-        }
-
-        return token;
-    }
-
-    /**
-     * Tells a server why it is refused, then closes its connection.
-     * @param ctx The channel handler context.
-     * @param reason Why it is refused.
-     */
-
-    private void refuse(ChannelHandlerContext ctx, Opcodes.Error reason) {
-        Log.warning(ctx.channel().remoteAddress() + " was refused as a server: " + reason + ".");
-
-        ctx.writeAndFlush(new ErrorPacket(reason)).addListener(ChannelFutureListener.CLOSE);
-    }
-
-    /**
-     * @param address Where a server connected from.
-     * @return Whether it is this machine or a private network: loopback, LAN, link-local or IPv6 ULA.
-     */
-
-    private static boolean isPrivate(InetAddress address) {
-        // IPv6 unique local addresses (fc00::/7) have no Java check of their own.
-        boolean uniqueLocal = address instanceof Inet6Address && (address.getAddress()[0] & 0xFE) == 0xFC;
-
-        return address.isLoopbackAddress() || address.isSiteLocalAddress() || address.isLinkLocalAddress() || uniqueLocal;
-    }
-
-    /**
-     * @param ctx The channel handler context.
-     * @param packet The packet that needs a client.
-     * @return Whether the connection is a client; a server is closed.
-     */
-
-    private boolean isGuest(ChannelHandlerContext ctx, Packets packet) {
-        // A server sending a client's request is broken.
-        if (!guest) reject(ctx, "sent " + packet + ", which only clients send");
-
-        return guest;
-    }
-
-    /**
-     * @param ctx The channel handler context.
-     * @return The account this client logged in to, or null after telling it NOT_LOGGED_IN.
-     */
-
-    private Account getAccount(ChannelHandlerContext ctx) {
-        Account account = AccountController.getAccount(ctx.channel());
-
-        // Only a logged-in player writes its own stats.
-        if (account == null) ctx.writeAndFlush(new ErrorPacket(Opcodes.Error.NOT_LOGGED_IN));
-
-        return account;
-    }
-
-    /**
-     * @return Whether the connection has said hello or registered.
-     */
-
-    private boolean isKnown() {
-        return guest || server != null;
+        incoming.handle(connection, payload);
     }
 }
