@@ -53,6 +53,25 @@ flowchart LR
 The details of each step are in [hub.md](hub.md), [accounts.md](accounts.md) and
 [game-server.md](game-server.md); the packets are in [protocol.md](protocol.md).
 
+## Packet handling
+
+Each service keeps its network code in the same shape (see [protocol.md](protocol.md) for the wire):
+
+- **`:common`** holds `Packets`, `Opcodes`, the buffers, the outgoing packets
+  (`net/packets/out/`) and `IncomingPacket<C>`, the base of every packet a service receives. It
+  says whether the packet is `strict` (the connection must have said hello or registered first) and
+  which per-connection rate limit it draws from, and its `handle(connection, payload)` does the work.
+- **A `PacketRouter`** per service (`com.openrac.server.net.packets`, `com.openrac.hub.net.packets`)
+  maps each `Packets` value the service takes to its `Incoming<Name>Packet`, registered in one
+  static block. A game server has two maps: players' connections and the link to the hub.
+  A packet with no entry is not taken, and the sender is closed.
+- **One class per packet**, under `game/in/` and `hub/in/` on a game server and `in/` on the hub.
+  The opcodes of a packet are switched inside its class, one private method each.
+- **The Netty handler** (`GamePacketHandler`, `HubPacketHandler`) is thin: it decodes, looks the
+  packet up, refuses a strict packet before login, applies the rate limit, and calls `handle`.
+  It also admits and cleans up the connection. Per-connection state lives in the service's
+  `Connection`, which the packets read and change.
+
 ## Modes
 
 `MODE` picks a game server's role:

@@ -222,7 +222,7 @@ Methods are ordered by role, not by visibility.
 | Pattern | Usage | Examples |
 |---|---|---|
 | `*Controller` | Static classes that run a system-wide operation | `PartyController` |
-| `*Handler` | Instance-based processors, such as Netty handlers | `ServerPacketHandler` |
+| `*Handler` | Instance-based processors, such as Netty handlers | `GamePacketHandler` |
 | `*Packet` | Packets, built in their constructors | `HelloPacket`, `PartyPacket` |
 | `*Constants` | Values a module decides itself | `Constants`, `NetworkConstants` |
 | `*Tests` | Test classes | `PacketCodecTests` |
