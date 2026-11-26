@@ -16,6 +16,6 @@ public class ServerChannelInitializer extends PacketChannelInitializer {
 
     @Override
     protected void addLastHandlers(ChannelPipeline pipeline) {
-        pipeline.addLast("packetHandler", new ServerPacketHandler());
+        pipeline.addLast("packetHandler", new GamePacketHandler());
     }
 }

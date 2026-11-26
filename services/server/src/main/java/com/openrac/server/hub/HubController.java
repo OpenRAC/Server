@@ -13,6 +13,7 @@ import com.openrac.net.netty.PacketChannelInitializer;
 import com.openrac.net.netty.handlers.PacketHandler;
 import com.openrac.net.packets.Opcodes;
 import com.openrac.net.packets.Packets;
+import com.openrac.net.packets.model.IncomingPacket;
 import com.openrac.net.packets.model.InputBuffer;
 import com.openrac.net.packets.model.OutgoingPacket;
 import com.openrac.net.packets.out.AccountPacket;
@@ -22,6 +23,7 @@ import com.openrac.net.packets.out.RegisterPacket;
 import com.openrac.server.Constants;
 import com.openrac.server.Session;
 import com.openrac.server.SessionRegistry;
+import com.openrac.server.net.packets.PacketRouter;
 import com.openrac.server.party.PartyController;
 import com.openrac.utils.logger.Log;
 
@@ -175,13 +177,13 @@ public class HubController {
 
     /**
      * Tells the player the hub's answer to its token.
-     * @param payload The VERIFIED payload after its opcode.
+     * @param request The request the hub answers.
+     * @param accountId The account the token belongs to, 0 when it is no session.
+     * @param name The account's name.
      */
 
-    private static void handleVerified(InputBuffer payload) {
-        Session session = pending.remove(payload.readInt());
-        long accountId = payload.readLong();
-        String name = payload.readString();
+    public static void complete(int request, long accountId, String name) {
+        Session session = pending.remove(request);
 
         // The player left while the hub answered.
         if (session == null) return;
@@ -203,7 +205,7 @@ public class HubController {
      * @param reason Why the hub refused.
      */
 
-    private static void handleError(Opcodes.Error reason) {
+    public static void refuse(Opcodes.Error reason) {
         // A wrong key is final, but a full hub may free up.
         if (reason == Opcodes.Error.REGION_KEY) {
             refused = true;
@@ -309,19 +311,10 @@ public class HubController {
 
         @Override
         protected void route(ChannelHandlerContext ctx, Packets packet, InputBuffer payload) {
-            switch (packet) {
-                case HUB -> {
-                    Opcodes.Hub opcode = Opcodes.Hub.get(payload.readUnsignedByte());
+            IncomingPacket<ChannelHandlerContext> incoming = PacketRouter.getHub(packet);
 
-                    // REGISTERED only confirms, VERIFIED answers a waiting player.
-                    if (opcode == Opcodes.Hub.REGISTERED) Log.notice("Listed by the hub as server " + payload.readInt() + ".");
-                    else if (opcode == Opcodes.Hub.VERIFIED) handleVerified(payload);
-                }
-                case ERROR -> handleError(Opcodes.Error.get(payload.readUnsignedByte()));
-
-                // Nothing else is meant for a server.
-                default -> {}
-            }
+            // Nothing else is meant for a server.
+            if (incoming != null) incoming.handle(ctx, payload);
         }
     }
 }
